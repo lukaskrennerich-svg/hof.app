@@ -6,6 +6,7 @@ const I={
   karte:'M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14',
   massnahmen:'M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM3 10h18M8 3v4M16 3v4',
   stall:'M3 11 12 4l9 7M5 10v10h14V10M9 20v-6h6v6',
+  markt:'M3 17l6-6 4 4 8-8M15 7h6v6',
   betrieb:'M4 14V8h7l2 6M13 14h5l2 2M11 8V5M10 17a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM20 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0z',
   mic:'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3M8 21h8',
   cam:'M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
@@ -49,7 +50,7 @@ const STALLKAT=['Kraftfutter','Grundfutter','Mineralfutter','Tierarzt & Medikame
 const DVKANAL=['Hofladen','Milchtankstelle','Wochenmarkt','Lieferung','Sonstiges'];
 
 /* ---------- Datenhaltung (Supabase) ---------- */
-const COLS=['settings','schlaege','pacht','anbau','massnahmen','mittel','maschinen','einkauf','sonstkosten','milch','dv','stallkosten','tiere','vorlagen','eingang'];
+const COLS=['settings','schlaege','pacht','anbau','massnahmen','mittel','maschinen','einkauf','sonstkosten','milch','dv','stallkosten','tiere','vorlagen','eingang','tierdaten','markt'];
 const D={};COLS.forEach(c=>D[c]={});
 const CFG=window.HOF_CONFIG||{};
 let SB=null,BETRIEB=null,ROLE=null,ME=null,SAMPLE=null,LOCAL=false,CANWRITE=true,READY=false,CH=null,CH2=null,LASTLOAD=0;
@@ -157,7 +158,7 @@ function curWJ(){
   const all=L('anbau').map(a=>a.wj).filter(Boolean).sort();
   return all.length?all[all.length-1]:wjOf(todayISO());
 }
-function wjList(){const s=new Set([curWJ(),wjOf(todayISO())]);L('anbau').forEach(a=>a.wj&&s.add(a.wj));L('massnahmen').forEach(m=>m.wj&&s.add(m.wj));return [...s].sort().reverse()}
+function wjList(){const s=new Set([curWJ(),wjOf(todayISO()),...(SET().wjs||[])]);L('anbau').forEach(a=>a.wj&&s.add(a.wj));L('massnahmen').forEach(m=>m.wj&&s.add(m.wj));return [...s].sort().reverse()}
 const anbauFor=(sid,wj)=>L('anbau').find(a=>a.schlag_id===sid&&a.wj===wj);
 function pachtFor(sid,wj){const [a,b]=wjRange(wj);const l=L('pacht').filter(p=>p.schlag_id===sid&&(!p.beginn||p.beginn<=b)&&(!p.ende||p.ende>=a)).sort((x,y)=>(x.beginn||'').localeCompare(y.beginn||''));return l[l.length-1]||L('pacht').filter(p=>p.schlag_id===sid).pop()||null}
 function priceAt(mi,date){if(!mi)return null;const p=(mi.preise||[]).slice().sort((a,b)=>(a.ab||'').localeCompare(b.ab||''));if(!p.length)return null;let r=p[0];for(const x of p)if(!date||(x.ab||'')<=date)r=x;return r}
@@ -209,17 +210,17 @@ function stallYear(y){
 /* ---------- Rendering ---------- */
 let rq=0;
 function schedule(){if(rq)return;rq=requestAnimationFrame(()=>{rq=0;render()})}
-const TABS=[['uebersicht','Übersicht'],['karte','Karte'],['massnahmen','Maßnahmen'],['stall','Stall'],['betrieb','Betrieb']];
-function go(v,opts={}){if(opts.push)S.stack.push({view:S.view,sel:S.sel});else S.stack=[];S.view=v;if(opts.sel!==undefined)S.sel=opts.sel;if(['uebersicht','karte','massnahmen','stall','betrieb'].includes(v))ls.set('view',v);render(true)}
+const TABS=[['uebersicht','Übersicht'],['karte','Karte'],['massnahmen','Maßnahmen'],['stall','Stall'],['markt','Markt'],['betrieb','Betrieb']];
+function go(v,opts={}){if(opts.push)S.stack.push({view:S.view,sel:S.sel});else S.stack=[];S.view=v;if(opts.sel!==undefined)S.sel=opts.sel;if(['uebersicht','karte','massnahmen','stall','markt','betrieb'].includes(v))ls.set('view',v);render(true)}
 function back(){const p=S.stack.pop();if(p){S.view=p.view;S.sel=p.sel}else S.view='uebersicht';render(true)}
 function render(reset){
   const main=$('#main');const ae=document.activeElement;const aid=ae&&main.contains(ae)?ae.id:null;const sel=aid&&ae.selectionStart!=null?[ae.selectionStart,ae.selectionEnd]:null;
   const st=main.scrollTop;const authed=S.auth==='ready';
-  const V=!authed?vAuth:({uebersicht:vUebersicht,karte:vKarte,massnahmen:vMassnahmen,stall:vStall,betrieb:vBetrieb,schlag:vSchlag,import:vImport}[S.view]||vUebersicht);
+  const V=!authed?vAuth:({uebersicht:vUebersicht,karte:vKarte,massnahmen:vMassnahmen,stall:vStall,betrieb:vBetrieb,schlag:vSchlag,import:vImport,tier:vTier,markt:vMarkt}[S.view]||vUebersicht);
   main.innerHTML=V()+(authed&&!LOCAL&&(!navigator.onLine||OUTBOX.length)?`<div class="netbadge">${navigator.onLine?'Wird synchronisiert …':'Offline'}${OUTBOX.length?' · '+OUTBOX.length+' ungespeichert':''}</div>`:'');
   if(!reset)main.scrollTop=st;else main.scrollTop=0;
   if(aid){const el=document.getElementById(aid);if(el){el.focus({preventScroll:true});if(sel&&el.setSelectionRange)try{el.setSelectionRange(sel[0],sel[1])}catch(e){}}}
-  const tabV=S.view==='schlag'?(S.stack[0]?.view||'karte'):S.view==='import'?'uebersicht':S.view;
+  const tabV=S.view==='schlag'?(S.stack[0]?.view||'karte'):S.view==='tier'?'stall':S.view==='import'?'uebersicht':S.view;
   $('#tabs').hidden=!authed;
   $('#tabs').innerHTML=TABS.map(([id,l])=>`<button data-act="tab" data-v="${id}" class="${tabV===id?'on':''}" aria-current="${tabV===id?'page':'false'}"><span class="ic">${svgI(I[id])}</span><span>${l}</span></button>`).join('');
   $('#fab').innerHTML=svgI(I.mic,26,2);$('#fab').hidden=!authed||(S.view==='karte'&&!!(S.sel||S.listOpen||S.draw||!L('schlaege').some(s=>s.geo)));
@@ -255,7 +256,10 @@ async function signUp(){const em=authMail();if(!em)return;const pw=val('au-pw');
 async function forgotPw(){const em=authMail();if(!em)return;const {error}=await SB.auth.resetPasswordForEmail(em,{redirectTo:appUrl()});if(error)return authErr(error);toast('Link verschickt – bitte E-Mail öffnen.',5000)}
 async function setPw(){const pw=val('au-pw');if(pw.length<8)return toast('Das Passwort braucht mindestens 8 Zeichen.');const {error}=await SB.auth.updateUser({password:pw});if(error)return authErr(error);toast('Passwort gespeichert');const {data}=await SB.auth.getSession();if(data.session){ME=null;afterLogin(data.session)}}
 async function newBetrieb(d,b){const n=val('nb-name');if(!n)return toast('Bitte einen Namen eingeben.');if(b)b.disabled=true;try{const id=(crypto.randomUUID?crypto.randomUUID():'10000000-1000-4000-8000-100000000000'.replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16)));const {data:u}=await SB.auth.getUser();const {error}=await SB.from('betriebe').insert({id,name:n,owner:u&&u.user?u.user.id:undefined});if(error){S.err='Betrieb anlegen fehlgeschlagen: '+(error.message||'')+(error.code?' (Code '+error.code+')':'')+(error.details?' – '+error.details:'')+(error.hint?' – '+error.hint:'');toast(S.err,15000);const nb=document.querySelector('.auth .card');if(nb&&!document.getElementById('nb-err'))nb.insertAdjacentHTML('beforeend','<div id="nb-err" class="banner" style="user-select:text"></div>');const e=document.getElementById('nb-err');if(e)e.textContent=S.err;return}ls.set('betrieb',id);await afterLogin((await SB.auth.getSession()).data.session);if(BETRIEB)await put('settings','main',{name:n,kalk_pacht:0})}catch(e){toast('Betrieb anlegen fehlgeschlagen: '+(e&&e.message||e),15000)}finally{if(b&&b.isConnected)b.disabled=false}}
-function wjSelect(){return `<select id="wjsel" class="inp" style="height:30px;width:auto;padding:0 8px;font-size:13px;border-radius:8px" aria-label="Wirtschaftsjahr">${wjList().map(w=>`<option${w===curWJ()?' selected':''}>${w}</option>`).join('')}</select>`}
+function wjSelect(){return `<select id="wjsel" class="inp" style="height:30px;width:auto;padding:0 8px;font-size:13px;border-radius:8px" aria-label="Wirtschaftsjahr">${wjList().map(w=>`<option${w===curWJ()?' selected':''}>${w}</option>`).join('')}<option value="__neu">＋ Wirtschaftsjahr hinzufügen …</option></select>`}
+function wjAdd(){const have=new Set(wjList());const y=new Date().getFullYear();const opts=[];for(let i=y+3;i>=y-10;i--){const w=wjLabel(i);if(!have.has(w))opts.push(w)}
+  openSheet({title:'Wirtschaftsjahr hinzufügen',body:`<div class="note">Ein Wirtschaftsjahr läuft vom 1. Juli bis 30. Juni (z. B. 2026/27 = Anbau für die Ernte 2027).</div>${F('wj-neu','Wirtschaftsjahr',opts.find(w=>parseInt(w)===y)||opts[0],{type:'select',opts})}<div class="note">Für das neue Jahr kannst du danach je Schlag die Kultur festlegen (Schlag öffnen → Kultur / Sorte). Pachtverträge und Schläge gelten automatisch weiter.</div>`,
+   saveLabel:'Hinzufügen',save:async()=>{const w=val('wj-neu');await put('settings','main',{...SET(),wjs:[...new Set([...(SET().wjs||[]),w])]});S.wj=w;ls.set('wj',w);toast('Wirtschaftsjahr '+w+' hinzugefügt');render()}})}
 const betriebName=()=>SET().name||(BETRIEB&&BETRIEB.name)||'Mein Betrieb';
 function banners(){let b='';if(LOCAL)b+=`<div class="banner">Demo-Modus: Die App ist noch nicht mit der Datenbank verbunden (config.js). Daten bleiben nur in diesem Browser.</div>`;else if(!CANWRITE)b+=`<div class="banner">Du kannst die Daten ansehen, aber nicht bearbeiten.</div>`;if(L('schlaege').some(s=>s.demo)||L('maschinen').some(s=>s.demo))b+=`<div class="banner" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span>Es sind noch Beispieldaten enthalten.</span><button class="btn sm sec" data-act="demoDel">Entfernen</button></div>`;return b}
 function loading(){return `<div class="empty"><span class="spin"></span>Daten werden geladen …</div>`}
@@ -459,7 +463,7 @@ function vStall(){
   if(S.stallSeg==='milch'){list=`<div class="card tight">${r.milch.slice().reverse().map(m=>{const days=new Date(+m.monat.slice(0,4),+m.monat.slice(5,7),0).getDate();const lst=n0(m.kuehe)?(n0(m.gemelk_kg)||n0(m.menge_kg))/n0(m.kuehe)/days:0;return `<button class="row" data-act="milchForm" data-id="${m.id}"><div class="main"><span class="t">${MON[+m.monat.slice(5,7)-1]} ${m.monat.slice(0,4)}</span><span class="sub">${nf(n0(m.menge_kg))} kg · ${nf(n0(m.preis_ct)||(n0(m.menge_kg)?r.geldOf(m)/n0(m.menge_kg)*100:0),2)} ct/kg${lst?' · '+nf(lst,1)+' kg/Kuh/Tag':''}${n0(m.fett)?' · '+nf(n0(m.fett),2)+' % F / '+nf(n0(m.eiweiss),2)+' % E':''}</span></div><span class="r">${eur(r.geldOf(m))}</span></button>`}).join('')||'<div class="empty">Noch keine Milchgeldabrechnung erfasst. Foto der Abrechnung genügt.</div>'}</div><button class="btn dash" data-act="milchForm">+ Monat erfassen</button><button class="btn sec" data-act="assistant" data-mode="photo">${svgI(I.cam,18,2)} Milchgeldabrechnung fotografieren</button>`}
   if(S.stallSeg==='dv'){const byP={};r.dv.forEach(x=>{byP[x.produkt||'Sonstiges']=(byP[x.produkt||'Sonstiges']||0)+n0(x.betrag)});list=`${Object.keys(byP).length?`<div class="card"><h2>Nach Produkt</h2><div class="legend">${Object.entries(byP).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div><span class="lab">${esc(k)}</span><span class="num" style="font-size:13px">${eur(v)}</span><span class="pct">${Math.round(v/(r.dvSum||1)*100)} %</span></div>`).join('')}</div></div>`:''}<div class="card tight">${r.dv.slice().sort((a,b)=>b.datum.localeCompare(a.datum)).map(x=>`<button class="row" data-act="dvForm" data-id="${x.id}"><div class="main"><span class="t">${esc(x.produkt||'Verkauf')}</span><span class="sub">${fmtD(x.datum)}${x.menge?' · '+nf(n0(x.menge),1)+' '+esc(x.einheit||''):''}${x.kanal?' · '+esc(x.kanal):''}</span></div><span class="r">${eur(n0(x.betrag))}</span></button>`).join('')||'<div class="empty">Noch keine Einnahmen aus der Direktvermarktung.</div>'}</div><button class="btn dash" data-act="dvForm">+ Einnahme erfassen</button>`}
   if(S.stallSeg==='kosten'){const byK={};r.ko.forEach(x=>{byK[x.kategorie||'Sonstiges']=(byK[x.kategorie||'Sonstiges']||0)+n0(x.betrag)});list=`${Object.keys(byK).length?`<div class="card"><h2>Nach Kategorie</h2><div class="legend">${Object.entries(byK).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div><span class="lab">${esc(k)}</span><span class="num" style="font-size:13px">${eur(v)}</span><span class="pct">${Math.round(v/(r.koSum||1)*100)} %</span></div>`).join('')}</div>${r.kg?`<span class="note">${nf(r.koSum/r.kg*100,2)} ct je kg abgelieferter Milch</span>`:''}</div>`:''}<div class="card tight">${r.ko.slice().sort((a,b)=>b.datum.localeCompare(a.datum)).map(x=>`<button class="row" data-act="skForm" data-id="${x.id}"><div class="main"><span class="t">${esc(x.kategorie)}</span><span class="sub">${fmtD(x.datum)}${x.notiz?' · '+esc(x.notiz):''}</span></div><span class="r">${eur(n0(x.betrag))}</span></button>`).join('')||'<div class="empty">Noch keine Stallkosten erfasst.</div>'}</div><button class="btn dash" data-act="skForm">+ Kosten erfassen</button>`}
-  if(S.stallSeg==='herde'){const t=L('tiere').sort((a,b)=>(a.name||a.ohrmarke||'').localeCompare(b.name||b.ohrmarke||''));const cnt=st=>t.filter(x=>x.status===st).length;list=`<div class="grid3"><div class="tile"><span class="l">Laktierend</span><span class="v num">${cnt('laktierend')}</span></div><div class="tile"><span class="l">Trocken</span><span class="v num">${cnt('trocken')}</span></div><div class="tile"><span class="l">Jungvieh</span><span class="v num">${cnt('jungvieh')}</span></div></div><div class="card tight">${t.map(x=>`<button class="row" data-act="tierForm" data-id="${x.id}"><div class="main"><span class="t">${esc(x.name||x.ohrmarke)}</span><span class="sub">${[x.ohrmarke&&x.name?esc(x.ohrmarke):'',esc(x.rasse||''),x.laktation?x.laktation+'. Laktation':'',x.letzte_kalbung?'Kalbung '+fmtD(x.letzte_kalbung):''].filter(Boolean).join(' · ')}</span></div><span class="badge ${x.status==='trocken'?'mr':x.status==='jungvieh'?'plan':''}">${esc(x.status||'')}</span>${n0(x.mlp_kg)?`<span class="r">${nf(n0(x.mlp_kg),1)} kg</span>`:''}</button>`).join('')||'<div class="empty">Noch keine Tiere angelegt.</div>'}</div><button class="btn dash" data-act="tierForm">+ Tier anlegen</button>`}
+  if(S.stallSeg==='herde')list=herdeView();
   return `<div class="page"><div class="head"><div><div class="eyebrow">Milchvieh · <select id="ysel" class="inp" style="height:30px;width:auto;padding:0 8px;font-size:13px;border-radius:8px" aria-label="Jahr">${years.map(v=>`<option${v===y?' selected':''}>${v}</option>`).join('')}</select></div><h1>Stall</h1></div></div>${banners()}
   <div class="hero"><div class="l">Einnahmen ${y}</div><div class="v">${eur(r.geld+r.dvSum)}</div><div class="s">Molkerei ${eur(r.geld)} · Direktvermarktung ${eur(r.dvSum)}</div><div class="steps"><span>Stallkosten <b>${eur(r.koSum)}</b></span><span>Saldo <b>${eur(r.saldo)}</b></span></div></div>
   <div class="grid2"><div class="tile"><span class="l">Milch abgeliefert</span><span class="v num">${nf(r.kg)} kg</span><span class="s">Ø ${nf(r.preis,2)} ct/kg</span></div><div class="tile"><span class="l">Milchleistung</span><span class="v num">${nf(r.leistung,1)}</span><span class="s">kg je Kuh und Tag · ${r.kuehe||'–'} Kühe</span></div></div>
@@ -691,11 +695,137 @@ function skForm(id,pre){
    save:async()=>{if(!need(nval('s-b')!=null,'Bitte einen Betrag eingeben.'))return false;await put('stallkosten',id||uid(),{datum:val('s-d'),kategorie:val('s-k'),betrag:nval('s-b'),notiz:val('s-n')});toast('Kosten gespeichert')},
    del:id?()=>del('stallkosten',id):null});
 }
+/* ---------- Markt ---------- */
+function marktHist(){return L('markt').filter(d=>d.id.startsWith('tag-')).sort((a,b)=>a.datum.localeCompare(b.datum))}
+function spark(vals){if(vals.length<2)return '';const W=90,H=26,mx=Math.max(...vals),mn=Math.min(...vals);const x=k=>2+k*(W-4)/(vals.length-1),y=v=>H-3-(v-mn)/((mx-mn)||1)*(H-6);const up=vals[vals.length-1]>=vals[0];
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true" style="flex-shrink:0"><path d="${vals.map((v,k)=>(k?'L':'M')+x(k).toFixed(1)+' '+y(v).toFixed(1)).join('')}" fill="none" stroke="${up?'var(--pri)':'var(--warn)'}" stroke-width="1.8"/><circle cx="${x(vals.length-1)}" cy="${y(vals[vals.length-1])}" r="2.5" fill="${up?'var(--pri)':'var(--warn)'}"/></svg>`}
+function eigeneVergleiche(werte){
+  const out=[];const find=re=>werte.find(w=>re.test((w.id||'')+' '+(w.name||'')));
+  [[/kas/i,/\bkas\b|kalkammon/i],[/harnstoff/i,/harnstoff/i],[/\bdap\b/i,/\bdap\b/i],[/kali/i,/kali/i]].forEach(([mre,wre])=>{const mi=L('mittel').find(m=>mre.test(m.name||'')&&m.einheit==='kg');const w=find(wre);if(mi&&w&&n0(w.wert)){const p=lastPrice(mi);if(p){const eig=n0(p.preis)*1000;const diff=eig-n0(w.wert);out.push(`<div class="row" style="cursor:default"><div class="main"><span class="t">${esc(mi.name)}</span><span class="sub">dein Einkauf ${fmtD(p.ab)}: ${eur(eig)}/t · Markt ${eur(n0(w.wert))}/t</span></div><span class="r ${diff>0?'warn':''}">${diff>0?'+':''}${eur(diff)}/t</span></div>`)}}});
+  const wjA=L('anbau').filter(a=>a.wj===curWJ());[[/weizen/i,/weizen/i],[/raps/i,/raps/i],[/mais/i,/mais/i],[/gerste/i,/gerste/i]].forEach(([kre,wre])=>{const a=wjA.find(x=>kre.test(x.kultur||'')&&n0(x.preis_eur_dt));const w=find(wre);if(a&&w&&n0(w.wert)&&/€\/t/.test(w.einheit||'')){const m=n0(w.wert)/10;out.push(`<div class="row" style="cursor:default"><div class="main"><span class="t">${esc(a.kultur)}</span><span class="sub">dein Planpreis ${nf(n0(a.preis_eur_dt),2)} €/dt · Markt ${nf(m,2)} €/dt</span></div><span class="r ${n0(a.preis_eur_dt)>m?'warn':''}">${n0(a.preis_eur_dt)>m?'über Markt':'unter Markt'}</span></div>`)}});
+  return out.join('');
+}
+function vMarkt(){
+  const m=D.markt.aktuell;const hist=marktHist();
+  const head=`<div class="head"><div><div class="eyebrow">${m?'Stand '+fmtD(m.stand)+(m.aktualisiert?' · aktualisiert '+fmtD(m.aktualisiert.slice(0,10))+' '+m.aktualisiert.slice(11,16):''):'Preise für Landwirtschaft'}</div><h1>Markt</h1></div></div>`;
+  if(!m)return `<div class="page">${head}<div class="card empty"><b>Noch keine Marktdaten</b>Claude trägt hier jeden Morgen die aktuellen Preise ein: Weizen, Raps, Mais und Gerste (Börse und Erzeugerpreise), Dünger (KAS, Harnstoff, DAP, Kali), Milchpreis, Agrardiesel und mehr.<span class="note">Das startet, sobald die Claude-Auswertung eingerichtet ist (Anleitung, Teil E).</span></div></div>`;
+  const allW=(m.gruppen||[]).flatMap(g=>g.werte||[]);const verg=eigeneVergleiche(allW);
+  return `<div class="page">${head}
+  ${m.kommentar?`<div class="card" style="gap:6px"><h2>Kurz zusammengefasst</h2><div style="font-size:14px;line-height:1.5">${esc(m.kommentar)}</div></div>`:''}
+  ${(m.gruppen||[]).map(g=>`<div class="card tight"><div style="padding:12px 0 6px"><h2>${esc(g.name)}</h2></div>${(g.werte||[]).map(w=>{const hv=hist.map(h=>h.werte&&h.werte[w.id]).filter(v=>typeof v==='number');const ch=w.vorher!=null&&n0(w.vorher)?(n0(w.wert)-n0(w.vorher))/n0(w.vorher)*100:null;
+    return `<div class="row" style="cursor:default;align-items:center"><div class="main"><span class="t">${esc(w.name)}</span><span class="sub">${esc([w.ort,w.datum&&w.datum!==m.stand?'Stand '+fmtD(w.datum):'',w.quelle].filter(Boolean).join(' · '))}${w.url?` · <a href="${esc(w.url)}" target="_blank" rel="noopener">Quelle</a>`:''}</span></div>${spark(hv.slice(-30))}<span class="r">${w.wert!=null?nf(n0(w.wert),n0(w.wert)<100?2:0):'–'} ${esc(w.einheit||'')}${ch!=null?`<br><span style="font-size:11px" class="${ch<0?'warn':''}">${ch>=0?'▲':'▼'} ${nf(Math.abs(ch),1)} %</span>`:''}</span></div>`}).join('')}</div>`).join('')}
+  ${verg?`<div class="card"><h2>Im Vergleich zu deinen Preisen</h2><div class="rows">${verg}</div></div>`:''}
+  <div class="note">Die Werte sucht Claude täglich aus öffentlichen Quellen zusammen (z. B. Euronext/Matif, agrarheute, Landwirtschaftskammern, BLE). Sie dienen der Orientierung. Für Verträge die Preise bei deinem Händler prüfen.${m.hinweis?' '+esc(m.hinweis):''}</div></div>`;
+}
+
+/* ---------- Herdenmanagement ---------- */
+const TEV={mlp:['Probemelken (MLP)','var(--pri)'],kalbung:['Kalbung','var(--c-dueng)'],besamung:['Besamung','var(--info)'],trocken:['Trockengestellt','var(--c-saat)'],behandlung:['Behandlung','var(--bad)'],abgang:['Abgang','var(--fg2)'],notiz:['Notiz','var(--c-sonst)']};
+const addDays=(d,n)=>{const x=new Date(d+'T12:00');x.setDate(x.getDate()+n);return isoOf(x)};
+const daysBetween=(a,b)=>Math.round((new Date(b+'T12:00')-new Date(a+'T12:00'))/864e5);
+const tierName=t=>t?(t.name||t.ohrmarke||'Tier'):'?';
+function tierEv(id){return L('tierdaten').filter(e=>e.tier_id===id).sort((a,b)=>(a.datum||'').localeCompare(b.datum||''))}
+function tierInfo(t){
+  const ev=tierEv(t.id);const last=a=>{for(let i=ev.length-1;i>=0;i--)if(ev[i].art===a)return ev[i];return null};
+  const k=last('kalbung');const kalb=k&&(!t.letzte_kalbung||k.datum>=t.letzte_kalbung)?k.datum:t.letzte_kalbung||null;
+  const lakt=k&&n0(k.laktation)?n0(k.laktation):n0(t.laktation);
+  const mlp=last('mlp');const bes=last('besamung');const besAkt=bes&&(!kalb||bes.datum>kalb)?bes:null;
+  const heute=todayISO();const dim=kalb&&t.status!=='jungvieh'?daysBetween(kalb,heute):null;
+  const erw=besAkt&&besAkt.tragend!=='nein'?addDays(besAkt.datum,285):null;const trockenAb=erw?addDays(erw,-56):null;
+  const besCount=kalb?ev.filter(e=>e.art==='besamung'&&e.datum>kalb).length:0;
+  const h=[];
+  if(t.status!=='abgang'){
+    if(mlp&&n0(mlp.zellzahl)>200&&daysBetween(mlp.datum,heute)<60)h.push(['Zellzahl '+nf(n0(mlp.zellzahl))+' Tsd.','warn']);
+    if(t.status==='laktierend'&&trockenAb&&daysBetween(heute,trockenAb)<=14)h.push([daysBetween(heute,trockenAb)<0?'Trockenstellen überfällig':'Trockenstellen am '+fmtD(trockenAb),'warn']);
+    if(erw&&daysBetween(heute,erw)<=21&&daysBetween(heute,erw)>=-10)h.push(['Kalbung erwartet '+fmtD(erw),'mr']);
+    if(t.status==='laktierend'&&dim!=null&&dim>=60&&!besAkt)h.push(['Besamen ('+dim+'. Tag)','mr']);
+    if(besAkt&&besAkt.tragend!=='ja'&&besAkt.tragend!=='nein'&&daysBetween(besAkt.datum,heute)>=35)h.push(['Trächtigkeit prüfen','mr']);
+    const wz=[...ev].reverse().find(e=>e.art==='behandlung'&&e.wartezeit_bis&&e.wartezeit_bis>=heute);if(wz)h.push(['Wartezeit bis '+fmtD(wz.wartezeit_bis),'warn']);
+  }
+  return {ev,kalb,lakt,mlp,besAkt,dim,erw,trockenAb,besCount,hinweise:h};
+}
+function herdeView(){
+  const heute=todayISO();const alle=L('tiere');const f=S.herdeF||'aktiv';const q=(S.herdeQ||'').toLowerCase();
+  const list=alle.filter(t=>(f==='aktiv'?t.status!=='abgang':f==='alle'?true:t.status===f)&&(!q||(t.name||'').toLowerCase().includes(q)||(t.ohrmarke||'').toLowerCase().includes(q))).map(t=>({t,i:tierInfo(t)}));
+  const key=S.herdeSort||'name';
+  list.sort((a,b)=>key==='milch'?n0(b.i.mlp&&b.i.mlp.milch_kg)-n0(a.i.mlp&&a.i.mlp.milch_kg):key==='zellzahl'?n0(b.i.mlp&&b.i.mlp.zellzahl)-n0(a.i.mlp&&a.i.mlp.zellzahl):key==='dim'?n0(b.i.dim)-n0(a.i.dim):tierName(a.t).localeCompare(tierName(b.t)));
+  const lakt=alle.filter(t=>t.status==='laktierend').map(t=>tierInfo(t)).filter(i=>i.mlp&&daysBetween(i.mlp.datum,heute)<=45);
+  const avg=k=>{const v=lakt.map(i=>n0(i.mlp[k])).filter(Boolean);return v.length?v.reduce((a,b)=>a+b,0)/v.length:0};
+  const cnt=st=>alle.filter(x=>x.status===st).length;
+  const todo=alle.filter(t=>t.status!=='abgang').map(t=>({t,h:tierInfo(t).hinweise})).filter(x=>x.h.length);
+  return `<div class="grid3"><div class="tile"><span class="l">Laktierend</span><span class="v num">${cnt('laktierend')}</span></div><div class="tile"><span class="l">Trocken</span><span class="v num">${cnt('trocken')}</span></div><div class="tile"><span class="l">Jungvieh</span><span class="v num">${cnt('jungvieh')}</span></div></div>
+  <div class="card"><div class="card-h"><h2>Herden-Ø letzte MLP</h2><small>${lakt.length} Kühe</small></div>${lakt.length?`<div class="grid2" style="gap:8px"><div class="tile soft"><span class="l">Milch</span><span class="num">${nf(avg('milch_kg'),1)} kg</span></div><div class="tile soft"><span class="l">Zellzahl</span><span class="num ${avg('zellzahl')>200?'warn':''}">${nf(avg('zellzahl'))} Tsd.</span></div><div class="tile soft"><span class="l">Fett</span><span class="num">${nf(avg('fett'),2)} %</span></div><div class="tile soft"><span class="l">Eiweiß</span><span class="num">${nf(avg('eiweiss'),2)} %</span></div></div>`:'<span class="note">Noch keine Probemelk-Daten der letzten 45 Tage.</span>'}
+   <div class="as-actions"><button class="btn pri sm" data-act="mlpBulk">MLP für alle erfassen</button><button class="btn sec sm" data-act="tierForm">+ Tier</button></div></div>
+  ${todo.length?`<div class="card"><h2>Zu tun</h2><div class="rows">${todo.map(x=>`<button class="row" data-act="tier" data-id="${x.t.id}"><div class="main"><span class="t">${esc(tierName(x.t))}</span><span class="sub">${x.h.map(h=>`<span class="badge ${h[1]}" style="margin:2px 4px 0 0;display:inline-block">${esc(h[0])}</span>`).join('')}</span></div></button>`).join('')}</div></div>`:''}
+  <label class="search" for="herdeq">${svgI(I.search,18,2)}<input id="herdeq" type="search" placeholder="Name oder Ohrmarke" value="${esc(S.herdeQ||'')}"></label>
+  <div class="chips">${[['aktiv','Herde'],['laktierend','Laktierend'],['trocken','Trocken'],['jungvieh','Jungvieh'],['abgang','Abgänge']].map(([k,l])=>`<button class="chip ${f===k?'on':''}" data-act="herdeF" data-k="${k}">${l}</button>`).join('')}</div>
+  <div class="chips">${[['name','A–Z'],['milch','Milch'],['zellzahl','Zellzahl'],['dim','Laktationstag']].map(([k,l])=>`<button class="chip ${key===k?'on':''}" data-act="herdeSort" data-k="${k}" style="height:30px;font-size:12px">↕ ${l}</button>`).join('')}</div>
+  <div class="card tight">${list.map(({t,i})=>`<button class="row" data-act="tier" data-id="${t.id}"><div class="main"><span class="t">${esc(tierName(t))}${t.name&&t.ohrmarke?` <span class="muted" style="font-weight:400;font-size:12px">${esc(t.ohrmarke)}</span>`:''}</span><span class="sub">${[t.status==='jungvieh'?(t.geburt?'geb. '+fmtD(t.geburt):'Jungvieh'):i.lakt?i.lakt+'. Lakt.':'',i.dim!=null&&t.status==='laktierend'?i.dim+'. Tag':'',t.status==='trocken'?'trocken':'',i.erw?'Kalbung ~'+fmtD(i.erw):''].filter(Boolean).join(' · ')}${i.hinweise.length?' · <span class="warn">'+esc(i.hinweise[0][0])+'</span>':''}</span></div>${i.mlp?`<span class="r">${nf(n0(i.mlp.milch_kg),1)} kg<br><span class="muted" style="font-size:11px">${n0(i.mlp.fett)?nf(n0(i.mlp.fett),1)+'/'+nf(n0(i.mlp.eiweiss),1)+' %':''}</span></span>`:''}</button>`).join('')||'<div class="empty">Keine Tiere in dieser Ansicht.</div>'}</div>
+  <button class="btn dash" data-act="tierForm">+ Tier anlegen</button>`;
+}
+function vTier(){
+  const t=D.tiere[S.sel];const backB=`<button class="back" data-act="back">${svgI(I.back,20,2)}Herde</button>`;
+  if(!t)return `<div class="page">${backB}<div class="empty">Dieses Tier gibt es nicht mehr.</div></div>`;
+  const i=tierInfo(t);const mlps=i.ev.filter(e=>e.art==='mlp'&&n0(e.milch_kg));
+  let chart='';
+  if(mlps.length>=2){const pts=mlps.slice(-12);const W=320,H=110,mx=Math.max(...pts.map(e=>n0(e.milch_kg)))*1.1,mn=Math.min(...pts.map(e=>n0(e.milch_kg)))*0.8;const x=k=>12+k*(W-24)/(pts.length-1),y=v=>H-8-(v-mn)/(mx-mn||1)*(H-24);
+    chart=`<div class="card"><div class="card-h"><h2>Milchleistung</h2><small>kg je Probemelken</small></div><svg class="chart" viewBox="0 0 ${W} ${H+16}" width="100%" role="img" aria-label="Verlauf Milchleistung"><path d="${pts.map((e,k)=>(k?'L':'M')+x(k).toFixed(1)+' '+y(n0(e.milch_kg)).toFixed(1)).join('')}" fill="none" stroke="var(--pri)" stroke-width="2.5"/>${pts.map((e,k)=>`<circle cx="${x(k)}" cy="${y(n0(e.milch_kg))}" r="${k===pts.length-1?4.5:3}" fill="var(--pri)"/>`).join('')}<text x="${x(pts.length-1)}" y="${y(n0(pts[pts.length-1].milch_kg))-9}" text-anchor="end" style="font-weight:700;fill:var(--fg)">${nf(n0(pts[pts.length-1].milch_kg),1)} kg</text>${pts.map((e,k)=>k%Math.ceil(pts.length/6)===0||k===pts.length-1?`<text x="${x(k)}" y="${H+12}" text-anchor="middle">${fmtD(e.datum).slice(0,5)}</text>`:'').join('')}</svg></div>`}
+  const alter=t.geburt?Math.floor(daysBetween(t.geburt,todayISO())/365.25):null;
+  return `<div class="page">${backB}
+  <div class="head"><div><h1>${esc(tierName(t))}</h1><div class="eyebrow">${[t.name&&t.ohrmarke?esc(t.ohrmarke):'',esc(t.rasse||''),alter!=null?alter+' Jahre':''].filter(Boolean).join(' · ')} <span class="badge ${t.status==='trocken'?'mr':t.status==='jungvieh'||t.status==='abgang'?'plan':''}">${esc(t.status||'')}</span></div></div><button class="icon-btn" data-act="tierForm" data-id="${t.id}" aria-label="Stammdaten bearbeiten">${svgI(I.edit,20,2)}</button></div>
+  ${i.hinweise.length?`<div style="display:flex;gap:6px;flex-wrap:wrap">${i.hinweise.map(h=>`<span class="badge ${h[1]}">${esc(h[0])}</span>`).join('')}</div>`:''}
+  <div class="grid2"><div class="tile"><span class="l">Laktation</span><span class="v num">${i.lakt||'–'}</span><span class="s">${i.kalb?'Kalbung '+fmtD(i.kalb):'keine Kalbung erfasst'}</span></div>
+   <div class="tile"><span class="l">Laktationstag</span><span class="v num">${i.dim!=null&&t.status==='laktierend'?i.dim:'–'}</span><span class="s">${i.besAkt?'besamt '+fmtD(i.besAkt.datum)+(i.besAkt.tragend==='ja'?' · tragend':i.besAkt.tragend==='nein'?' · nicht tragend':''):'nicht besamt'}</span></div>
+   <div class="tile"><span class="l">Letzte MLP</span><span class="v num">${i.mlp?nf(n0(i.mlp.milch_kg),1)+' kg':'–'}</span><span class="s">${i.mlp?[fmtD(i.mlp.datum),n0(i.mlp.fett)?'F '+nf(n0(i.mlp.fett),2)+' %':'',n0(i.mlp.eiweiss)?'E '+nf(n0(i.mlp.eiweiss),2)+' %':'',n0(i.mlp.zellzahl)?'ZZ '+nf(n0(i.mlp.zellzahl)):''].filter(Boolean).join(' · '):''}</span></div>
+   <div class="tile"><span class="l">Erw. Kalbung</span><span class="v num" style="font-size:16px">${i.erw?fmtD(i.erw):'–'}</span><span class="s">${i.trockenAb?'trockenstellen ab '+fmtD(i.trockenAb):''}</span></div></div>
+  ${chart}
+  <div class="card"><h2>Erfassen</h2><div class="as-actions">${['mlp','kalbung','besamung','trocken','behandlung','notiz','abgang'].map(a=>`<button class="btn sec sm" data-act="evForm" data-tier="${t.id}" data-art="${a}">+ ${TEV[a][0].replace(' (MLP)','')}</button>`).join('')}</div></div>
+  <div class="card"><h2>Verlauf</h2><div class="rows">${i.ev.slice().reverse().map(e=>`<button class="row" data-act="evForm" data-tier="${t.id}" data-art="${e.art}" data-id="${e.id}"><span class="dot" style="background:${TEV[e.art]?TEV[e.art][1]:'var(--c-sonst)'}"></span><div class="main"><span class="t">${esc(TEV[e.art]?TEV[e.art][0]:e.art)}</span><span class="sub">${fmtD(e.datum)} · ${esc(evDetail(e))}</span></div></button>`).join('')||'<div class="empty">Noch keine Einträge.</div>'}</div></div>
+  ${t.notiz?`<div class="card"><h2>Notizen</h2><div style="font-size:14px;white-space:pre-wrap">${esc(t.notiz)}</div></div>`:''}</div>`;
+}
+function evDetail(e){
+  if(e.art==='mlp')return [n0(e.milch_kg)?nf(n0(e.milch_kg),1)+' kg':'',n0(e.fett)?'Fett '+nf(n0(e.fett),2)+' %':'',n0(e.eiweiss)?'Eiweiß '+nf(n0(e.eiweiss),2)+' %':'',n0(e.zellzahl)?'ZZ '+nf(n0(e.zellzahl))+' Tsd.':'',n0(e.harnstoff)?'Harnstoff '+nf(n0(e.harnstoff)):''].filter(Boolean).join(' · ');
+  if(e.art==='kalbung')return [e.laktation?e.laktation+'. Laktation':'',e.kalb_geschlecht?(e.kalb_geschlecht==='w'?'Kuhkalb':'Bullenkalb'):'',e.kalb_ohrmarke||'',e.verlauf||''].filter(Boolean).join(' · ');
+  if(e.art==='besamung')return [e.bulle?'Bulle '+e.bulle:'',e.tragend==='ja'?'tragend':e.tragend==='nein'?'nicht tragend':'Trächtigkeit offen'].filter(Boolean).join(' · ');
+  if(e.art==='behandlung')return [e.diagnose,e.medikament,e.wartezeit_bis?'Wartezeit bis '+fmtD(e.wartezeit_bis):'',n0(e.kosten)?eur(n0(e.kosten)):''].filter(Boolean).join(' · ');
+  if(e.art==='abgang')return [e.grund,n0(e.erloes)?eur(n0(e.erloes)):''].filter(Boolean).join(' · ');
+  return e.notiz||'';
+}
 function tierForm(id){
   const x=id?D.tiere[id]:{status:'laktierend'};
-  openSheet({title:id?(x.name||x.ohrmarke):'Neues Tier',body:`<div class="fgrid">${F('t-n','Name',x.name)}${F('t-o','Ohrmarke',x.ohrmarke)}${F('t-r','Rasse',x.rasse,{ph:'Fleckvieh, HF …'})}${F('t-s','Status',x.status,{type:'select',opts:['laktierend','trocken','jungvieh','abgang']})}${F('t-g','Geburt',x.geburt,{type:'date'})}${F('t-k','Letzte Kalbung',x.letzte_kalbung,{type:'date'})}${F('t-l','Laktation Nr.',x.laktation,{type:'num'})}${F('t-m','Letzte MLP',x.mlp_kg,{type:'num',unit:'kg/Tag'})}${F('t-no','Notizen',x.notiz,{type:'textarea',full:true})}</div>`,
-   save:async()=>{if(!need(val('t-n')||val('t-o'),'Bitte Name oder Ohrmarke eingeben.'))return false;await put('tiere',id||uid(),{name:val('t-n'),ohrmarke:val('t-o'),rasse:val('t-r'),status:val('t-s'),geburt:val('t-g'),letzte_kalbung:val('t-k'),laktation:nval('t-l'),mlp_kg:nval('t-m'),notiz:val('t-no')});toast('Gespeichert')},
-   del:id?()=>del('tiere',id):null});
+  openSheet({title:id?tierName(x):'Neues Tier',body:`<div class="fgrid">${F('t-n','Name',x.name)}${F('t-o','Ohrmarke',x.ohrmarke,{ph:'DE 08 …'})}${F('t-r','Rasse',x.rasse,{ph:'Fleckvieh, HF, Braunvieh …'})}${F('t-s','Status',x.status,{type:'select',opts:['laktierend','trocken','jungvieh','abgang']})}${F('t-g','Geburt',x.geburt,{type:'date'})}${F('t-v','Vater',x.vater)}${F('t-k','Letzte Kalbung',x.letzte_kalbung,{type:'date'})}${F('t-l','Laktation Nr.',x.laktation,{type:'num'})}${F('t-no','Notizen',x.notiz,{type:'textarea',full:true})}</div><div class="note">Kalbungen, Besamungen und Probemelken erfasst du danach im Tier selbst. Letzte Kalbung und Laktation werden dabei automatisch fortgeschrieben.</div>`,
+   save:async()=>{if(!need(val('t-n')||val('t-o'),'Bitte Name oder Ohrmarke eingeben.'))return false;const nid=id||uid();await put('tiere',nid,{...x,name:val('t-n'),ohrmarke:val('t-o'),rasse:val('t-r'),status:val('t-s'),geburt:val('t-g'),vater:val('t-v'),letzte_kalbung:val('t-k'),laktation:nval('t-l'),notiz:val('t-no')});if(!id){S.stack.push({view:S.view,sel:S.sel});S.view='tier';S.sel=nid;render(true)}toast('Gespeichert')},
+   del:id?async()=>{await del('tiere',id);for(const e of tierEv(id))await del('tierdaten',e.id);if(S.view==='tier')back()}:null});
+}
+function evForm(tierId,art,id){
+  const t=D.tiere[tierId];const e=id?D.tierdaten[id]:{datum:todayISO(),art};const i=tierInfo(t);
+  const f={mlp:F('e-kg','Milch',e.milch_kg,{type:'num',unit:'kg/Tag'})+F('e-f','Fett',e.fett,{type:'num',unit:'%'})+F('e-e','Eiweiß',e.eiweiss,{type:'num',unit:'%'})+F('e-z','Zellzahl',e.zellzahl,{type:'num',unit:'Tsd./ml'})+F('e-h','Harnstoff',e.harnstoff,{type:'num',unit:'ppm'}),
+    kalbung:F('e-l','Laktation Nr.',e.laktation??((i.lakt||0)+1),{type:'num'})+F('e-v','Verlauf',e.verlauf||'leicht',{type:'select',opts:['leicht','mittel','schwer','Kaiserschnitt','Totgeburt']})+F('e-kg2','Kalb',e.kalb_geschlecht||'w',{type:'select',opts:[['w','Kuhkalb'],['m','Bullenkalb']]})+F('e-ko','Ohrmarke Kalb',e.kalb_ohrmarke)+(id?'':`<label class="fld full" style="flex-direction:row;align-items:center;gap:10px"><input type="checkbox" id="e-neu" style="width:20px;height:20px" checked><span style="font-size:14px;color:var(--fg)">Kuhkalb als Jungvieh anlegen</span></label>`),
+    besamung:F('e-b','Bulle',e.bulle)+F('e-t','Trächtig',e.tragend||'offen',{type:'select',opts:[['offen','noch offen'],['ja','ja, tragend'],['nein','nein']]})+F('e-bt','Besamungstechniker / Kosten',e.notiz,{full:true}),
+    trocken:F('e-n','Notiz',e.notiz,{full:true,ph:'z. B. Trockensteller'}),
+    behandlung:F('e-d','Diagnose',e.diagnose,{full:true,ph:'z. B. Mastitis hinten links'})+F('e-m','Medikament',e.medikament,{full:true})+F('e-w','Wartezeit Milch bis',e.wartezeit_bis,{type:'date'})+F('e-k','Kosten',e.kosten,{type:'num',unit:'€'})+(id?'':`<label class="fld full" style="flex-direction:row;align-items:center;gap:10px"><input type="checkbox" id="e-sk" style="width:20px;height:20px" checked><span style="font-size:14px;color:var(--fg)">Kosten als Stallkosten (Tierarzt) buchen</span></label>`),
+    abgang:F('e-g','Grund',e.grund||'Verkauf',{type:'select',opts:['Verkauf','Schlachtung','Verendet','Sonstiges']})+F('e-er','Erlös',e.erloes,{type:'num',unit:'€'}),
+    notiz:F('e-n','Notiz',e.notiz,{type:'textarea',full:true})}[art]||'';
+  openSheet({title:(id?'':'')+TEV[art][0]+' · '+tierName(t),body:`<div class="fgrid">${F('e-dat','Datum',e.datum,{type:'date'})}${f}</div>`,
+   save:async()=>{const d={tier_id:tierId,art,datum:val('e-dat')||todayISO()};
+     if(art==='mlp'){Object.assign(d,{milch_kg:nval('e-kg'),fett:nval('e-f'),eiweiss:nval('e-e'),zellzahl:nval('e-z'),harnstoff:nval('e-h')});if(d.milch_kg==null)return need(false,'Bitte die Milchmenge eingeben.')}
+     if(art==='kalbung')Object.assign(d,{laktation:nval('e-l'),verlauf:val('e-v'),kalb_geschlecht:val('e-kg2'),kalb_ohrmarke:val('e-ko')});
+     if(art==='besamung')Object.assign(d,{bulle:val('e-b'),tragend:val('e-t'),notiz:val('e-bt')});
+     if(art==='trocken'||art==='notiz')d.notiz=val('e-n');
+     if(art==='behandlung')Object.assign(d,{diagnose:val('e-d'),medikament:val('e-m'),wartezeit_bis:val('e-w'),kosten:nval('e-k')});
+     if(art==='abgang')Object.assign(d,{grund:val('e-g'),erloes:nval('e-er')});
+     const nid=id||uid();await put('tierdaten',nid,{...(e||{}),...d});
+     if(!id){const up={...t};if(art==='kalbung'){up.status='laktierend';up.letzte_kalbung=d.datum;up.laktation=d.laktation}if(art==='trocken')up.status='trocken';if(art==='abgang')up.status='abgang';if(art==='mlp')up.mlp_kg=d.milch_kg;if(JSON.stringify(up)!==JSON.stringify(t))await put('tiere',t.id,up);
+       if(art==='kalbung'&&$('#e-neu')&&$('#e-neu').checked&&d.kalb_geschlecht==='w')await put('tiere',uid(),{name:'',ohrmarke:d.kalb_ohrmarke||('Kalb von '+tierName(t)),status:'jungvieh',geburt:d.datum,rasse:t.rasse||'',mutter:t.id});
+       if(art==='behandlung'&&n0(d.kosten)&&$('#e-sk')&&$('#e-sk').checked)await put('stallkosten',uid(),{datum:d.datum,kategorie:'Tierarzt & Medikamente',betrag:n0(d.kosten),notiz:tierName(t)+': '+(d.diagnose||'Behandlung')});}
+     toast('Gespeichert')},
+   del:id?()=>del('tierdaten',id):null});
+}
+function mlpBulk(){
+  const kuehe=L('tiere').filter(t=>t.status==='laktierend').sort((a,b)=>tierName(a).localeCompare(tierName(b)));
+  if(!kuehe.length)return toast('Keine laktierenden Kühe angelegt.');
+  openSheet({title:'Probemelken für alle',body:`${F('mb-dat','Datum',todayISO(),{type:'date'})}<div class="note">Nur Kühe mit eingetragener Milchmenge werden gespeichert. Kommas gehen auch (z. B. 4,15).</div>
+   <div class="scroll-x"><table class="tbl" style="font-size:13px"><thead><tr><th>Kuh</th><th>Milch kg</th><th>Fett %</th><th>Eiweiß %</th><th>ZZ Tsd.</th></tr></thead><tbody>${kuehe.map(t=>`<tr><td style="white-space:normal;min-width:90px"><b>${esc(tierName(t))}</b></td>${['kg','f','e','z'].map(k=>`<td><input id="mb-${k}-${t.id}" class="inp" inputmode="decimal" style="height:38px;width:68px;padding:0 6px"></td>`).join('')}</tr>`).join('')}</tbody></table></div>`,
+   saveLabel:'Alle speichern',save:async()=>{const d=val('mb-dat')||todayISO();let n=0;for(const t of kuehe){const kg=nval('mb-kg-'+t.id);if(kg==null)continue;await put('tierdaten',uid(),{tier_id:t.id,art:'mlp',datum:d,milch_kg:kg,fett:nval('mb-f-'+t.id),eiweiss:nval('mb-e-'+t.id),zellzahl:nval('mb-z-'+t.id)});await put('tiere',t.id,{...t,mlp_kg:kg});n++}toast(n+' Probemelk-Ergebnisse gespeichert')}});
 }
 function skostForm(id,pre){
   const x=id?D.sonstkosten[id]:{datum:todayISO(),...(pre||{})};
@@ -1051,7 +1181,7 @@ const ACT={
   mfDelM:d=>{mfRead();MF.mittel.splice(+d.i,1);drawMF()},
   mfAddG:()=>{mfRead();MF.maschinen.push({maschine_id:'',abrechnung:'ha',menge:null,satz:null});drawMF()},
   mfDelG:d=>{mfRead();MF.maschinen.splice(+d.i,1);drawMF()},
-  milchForm:d=>milchForm(d.id),dvForm:d=>dvForm(d.id),skForm:d=>skForm(d.id),tierForm:d=>tierForm(d.id),skostForm:d=>skostForm(d.id),
+  milchForm:d=>milchForm(d.id),dvForm:d=>dvForm(d.id),skForm:d=>skForm(d.id),tierForm:d=>tierForm(d.id),tier:d=>go('tier',{push:true,sel:d.id}),evForm:d=>evForm(d.tier,d.art,d.id||null),mlpBulk,herdeF:d=>{S.herdeF=d.k;render()},herdeSort:d=>{S.herdeSort=d.k;render()},skostForm:d=>skostForm(d.id),
   saveSettings:async()=>{await put('settings','main',{...SET(),name:val('set-name'),kalk_pacht:nval('set-kp')??0});toast('Gespeichert')},
   exportCSV,exportMass,exportJSON,
   demoDel:async(d,b)=>{if(!b.dataset.c){b.dataset.c=1;b.textContent='Wirklich alle löschen?';return}b.disabled=true;for(const c of COLS){for(const x of L(c)){if(x.demo)await del(c,x.id)}}toast('Beispieldaten entfernt')},
@@ -1061,7 +1191,7 @@ const ACT={
 };
 document.addEventListener('click',e=>{const t=e.target.closest('[data-act]');if(!t)return;const f=ACT[t.dataset.act];if(f){if(t.tagName!=='INPUT')e.preventDefault();f(t.dataset,t,e)}});
 document.addEventListener('change',e=>{const id=e.target.id;
-  if(id==='wjsel'){S.wj=e.target.value;ls.set('wj',S.wj);render()}
+  if(id==='wjsel'){if(e.target.value==='__neu'){e.target.value=curWJ();wjAdd();return}S.wj=e.target.value;ls.set('wj',S.wj);render()}
   else if(id==='betriebsel'){BETRIEB=S.betriebe.find(b=>b.id===e.target.value);ls.set('betrieb',BETRIEB.id);loadBetrieb()}
   else if(id==='ysel'){S.stallYear=+e.target.value;render()}
   else if(id==='msel'){S.ms=e.target.value;render()}
@@ -1069,7 +1199,7 @@ document.addEventListener('change',e=>{const id=e.target.id;
   else if(id==='imp-vorl'){const v=D.vorlagen[e.target.value];if(v){S.imp.map={...v.map};render()}}
   else if(id&&id.startsWith('map-')){impReadMap();render()}
 });
-document.addEventListener('input',e=>{const id=e.target.id;if(id==='mapq'){S.mapQ=e.target.value;S.sel=null;MAP.vb=null;render()}else if(id==='msearch'){S.msearch=e.target.value;render()}});
+document.addEventListener('input',e=>{const id=e.target.id;if(id==='mapq'){S.mapQ=e.target.value;S.sel=null;MAP.vb=null;render()}else if(id==='msearch'){S.msearch=e.target.value;render()}else if(id==='herdeq'){S.herdeQ=e.target.value;render()}});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#sheet').hidden)closeSheet()});
 window.addEventListener('resize',()=>{if(S.view==='karte'){MAP.vb=null;render()}});
 
