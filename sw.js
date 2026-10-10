@@ -1,5 +1,5 @@
 // Offline-Cache für die App-Hülle. Daten kommen aus Supabase bzw. dem lokalen Zwischenspeicher der App.
-const V = 'hof-v6';
+const V = 'hof-v7';
 const SHELL = ['./', 'index.html', 'app.js', 'config.js', 'manifest.webmanifest', 'icon.svg', 'beispieldaten.json',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',

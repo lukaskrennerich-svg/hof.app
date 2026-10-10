@@ -229,7 +229,7 @@ function render(reset){
   $('#tabs').innerHTML=TABS.map(([id,l])=>`<button data-act="tab" data-v="${id}" class="${tabV===id?'on':''}" aria-current="${tabV===id?'page':'false'}"><span class="ic">${svgI(I[id])}</span><span>${l}</span></button>`).join('');
   $('#fab').innerHTML=svgI(I.mic,26,2);$('#fab').hidden=!authed||(S.view==='karte'&&!!(S.sel||S.listOpen||S.draw||!L('schlaege').some(s=>s.geo)));
   const onMap=authed&&S.view==='karte';main.classList.toggle('overmap',onMap);$('#maplayer').hidden=!onMap;
-  if(onMap)mountMap();
+  if(onMap)mountMap();else stopWatch();
   if($('#ibx'))drawInbox();
 }
 /* Anmeldung */
@@ -347,7 +347,11 @@ const BASES={
 };
 function setBase(k){if(!LMAP)return;S.base=k;ls.set('base',k);if(LBASE)LMAP.removeLayer(LBASE);LBASE=BASES[k].make().addTo(LMAP);LBASE.bringToBack()}
 function setFlur(on){S.flur=on;ls.set('flur',on);if(!LMAP)return;if(on&&!LFLUR)LFLUR=LF().tileLayer.wms('https://owsproxy.lgl-bw.de/owsproxy/ows/WMS_LGL-BW_ALKIS_Basis_transparent?',{layers:'nora:ALKIS_Basis_transparent,nora:ALKIS_Basis_Beschriftung_transparent',format:'image/png',transparent:true,version:'1.3.0',maxZoom:21,minZoom:15,attribution:'Flurstücke © LGL-BW dl-de/by-2-0'});if(on)LFLUR.addTo(LMAP);else if(LFLUR)LMAP.removeLayer(LFLUR)}
-function mountMap(){if(gmOK())drawLeaflet();else drawSvgMap()}
+function mountMap(){if(gmOK()){drawLeaflet();startWatch()}else drawSvgMap()}
+let WATCH=null,MYPOS=null;
+function setMe(ll){MYPOS=ll;if(!LMAP)return;if(LME)LME.setLatLng(ll);else LME=LF().circleMarker(ll,{radius:8,color:'#FFFFFF',weight:3,fillColor:'#1A73E8',fillOpacity:1,interactive:false}).addTo(LMAP)}
+function startWatch(){if(WATCH!=null||!navigator.geolocation)return;let first=true;WATCH=navigator.geolocation.watchPosition(p=>{const ll=[p.coords.latitude,p.coords.longitude];setMe(ll);if(first){first=false;if(LMAP&&!L('schlaege').some(x=>x.geo)&&!S.draw)LMAP.setView(ll,16)}},()=>{navigator.geolocation.clearWatch(WATCH);WATCH=-1},{enableHighAccuracy:true,maximumAge:15000,timeout:20000})}
+function stopWatch(){if(WATCH!=null&&WATCH>=0)navigator.geolocation.clearWatch(WATCH);if(WATCH!==-1)WATCH=null}
 function mapFilter(){const wj=curWJ();const q=S.mapQ.toLowerCase();return s=>(S.mapK==='Alle'||kShort(anbauFor(s.id,wj)?.kultur)===S.mapK)&&(!q||(s.name||'').toLowerCase().includes(q)||(s.flurstueck||'').toLowerCase().includes(q))}
 function drawLeaflet(){
   const layer=$('#maplayer');if(layer.hidden)return;const Lf=LF();
@@ -355,6 +359,7 @@ function drawLeaflet(){
     LMAP=Lf.map('lmap',{zoomControl:false,attributionControl:true,maxZoom:21}).setView(CFG.mapCenter?[CFG.mapCenter.lat,CFG.mapCenter.lng]:[48.7,9.6],CFG.mapCenter?14:8);
     LMAP.attributionControl.setPrefix('');setBase(S.base||ls.get('base','dop'));setFlur(S.flur??ls.get('flur',false));
     LMAP.on('click',e=>{if(S.draw){addDrawPoint(e.latlng);return}if(S.sel){S.sel=null;render()}});
+    LME=null;if(MYPOS)setMe(MYPOS);
     setTimeout(()=>LMAP&&LMAP.invalidateSize(),50)}
   else LMAP.invalidateSize();
   const wj=curWJ();const f=mapFilter();const seen=new Set();let bounds=null;
@@ -380,7 +385,7 @@ function drawCoords(){return LDRAWM.map(m=>{const p=m.getLatLng();return [+p.lng
 function drawHa(){const c=drawCoords();if(c.length<3)return 0;return ringArea([...c,c[0]])/1e4}
 function startDraw(sid){if(!gmOK())return toast('Die Karte konnte nicht geladen werden – bitte Internetverbindung prüfen.');const g=geomOf(D.schlaege[sid]||{});S.draw={sid,pts:g?polysOf(g)[0][0].slice(0,-1).map(c=>({lat:c[1],lng:c[0]})):[],n:0};S.sel=null;S.stack=[];S.view='karte';LDRAW=null;LDRAWM=[];render(true)}
 async function drawSave(){const c=drawCoords();if(c.length<3)return;const s=D.schlaege[S.draw.sid];const ha=+(ringArea([...c,c[0]])/1e4).toFixed(4);const geo=JSON.stringify({type:'Polygon',coordinates:[[...c,c[0]]]});const upd={...s,geo};if(!n0(s.flaeche_ha))upd.flaeche_ha=ha;await put('schlaege',s.id,upd);toast('Grenze gespeichert · '+fha(ha)+(n0(s.flaeche_ha)?' (Fläche im Schlag unverändert)':''));const sid=S.draw.sid;S.draw=null;MAP.gkey='';S.sel=sid;render()}
-function locate(){if(!navigator.geolocation)return toast('Standort ist auf diesem Gerät nicht verfügbar.');navigator.geolocation.getCurrentPosition(p=>{const ll=[p.coords.latitude,p.coords.longitude];if(LMAP){LMAP.setView(ll,Math.max(LMAP.getZoom(),16));if(LME)LME.setLatLng(ll);else LME=LF().circleMarker(ll,{radius:8,color:'#FFFFFF',weight:3,fillColor:'#1A73E8',fillOpacity:1,interactive:false}).addTo(LMAP)}const s=schlagAt(ll[1],ll[0]);toast(s?'Du stehst auf: '+s.name:'Kein Schlag an deinem Standort.')},()=>toast('Standort nicht freigegeben.'),{enableHighAccuracy:true,timeout:10000})}
+function locate(){if(!navigator.geolocation)return toast('Standort ist auf diesem Gerät nicht verfügbar.');navigator.geolocation.getCurrentPosition(p=>{const ll=[p.coords.latitude,p.coords.longitude];if(LMAP){LMAP.setView(ll,Math.max(LMAP.getZoom(),16));setMe(ll)}const s=schlagAt(ll[1],ll[0]);toast(s?'Du stehst auf: '+s.name:'Kein Schlag an deinem Standort.')},()=>toast('Standort nicht freigegeben.'),{enableHighAccuracy:true,timeout:10000})}
 function inRing(x,y,r){let ins=false;for(let i=0,j=r.length-1;i<r.length;j=i++){const [xi,yi]=r[i],[xj,yj]=r[j];if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi))ins=!ins}return ins}
 function schlagAt(x,y){return L('schlaege').find(s=>{const g=geomOf(s);return g&&polysOf(g).some(p=>inRing(x,y,p[0])&&!p.slice(1).some(h=>inRing(x,y,h)))})}
 function zoomMap(f){if(LMAP&&gmOK()){f<1?LMAP.zoomIn():LMAP.zoomOut();return}const svg=$('#mapsvg');if(!svg||!MAP.vb)return;const [x,y,w,h]=MAP.vb;const cx=x+w/2,cy=y+h/2;MAP.vb=[cx-w*f/2,cy-h*f/2,w*f,h*f];svg.setAttribute('viewBox',MAP.vb.join(' '));svg.querySelectorAll('text').forEach(t=>{t.setAttribute('font-size',MAP.vb[2]/52);t.setAttribute('stroke-width',MAP.vb[2]/430)})}
