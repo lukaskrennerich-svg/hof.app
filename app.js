@@ -272,7 +272,7 @@ function loading(){return `<div class="empty"><span class="spin"></span>Daten we
 /* Übersicht */
 function vUebersicht(){
   const wj=curWJ();const t=farm(wj);
-  const head=`<div class="head"><div><div class="eyebrow">${esc(betriebName())} · WJ ${wjSelect()}</div><h1>Übersicht</h1></div><button class="icon-btn" data-act="go" data-v="import" aria-label="Daten importieren">${svgI(I.dl,20,2)}</button></div>`;
+  const head=`<div class="head"><div><div class="eyebrow">${esc(betriebName())} · WJ ${wjSelect()}</div><h1>Übersicht</h1></div><div style="display:flex;gap:8px"><button class="icon-btn" data-act="pdfDialog" aria-label="Auswertung als PDF" title="Auswertung als PDF">${svgI('M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6',20,2)}</button><button class="icon-btn" data-act="go" data-v="import" aria-label="Daten importieren">${svgI(I.dl,20,2)}</button></div></div>`;
   if(!READY)return `<div class="page">${head}${loading()}</div>`;
   if(!t.n)return `<div class="page">${head}${banners()}<div class="card empty"><b>Noch keine Schläge angelegt</b>Importiere deine Flächen aus FIONA oder der Ackerschlagkartei – oder lege den ersten Schlag von Hand an.<div class="as-actions" style="justify-content:center"><button class="btn pri" data-act="go" data-v="import">Daten importieren</button><button class="btn sec" data-act="schlagForm">Schlag anlegen</button></div></div>${stallCard()}</div>`;
   const costs=[['Pacht',t.pacht,'var(--c-pacht)'],['Maschinen & Lohn',t.masch,'var(--c-masch)'],['Dünger',t.duenger,'var(--c-dueng)'],['Pflanzenschutz',t.psm,'var(--c-psm)'],['Saatgut',t.saatgut,'var(--c-saat)'],['Sonstiges',t.sonst,'var(--c-sonst)']];
@@ -433,6 +433,7 @@ function vSchlag(){
   <div style="display:flex;flex-direction:column;gap:10px"><div class="card-h"><h2>Maßnahmen ${esc(wj)}</h2><span class="muted num" style="font-size:13px">${eur(ms.reduce((x,m)=>x+massCost(m).total,0))}</span></div>
    ${ms.length?`<div class="card tight timeline">${ms.map(m=>{const c=massCost(m);return `<button class="row" data-act="massEdit" data-id="${m.id}"><span class="dot" style="background:${TYP[m.typ]?.[1]||'var(--c-sonst)'}"></span><div class="main"><span class="t">${esc(m.titel||TYP[m.typ]?.[0])} ${m.status==='geplant'?'<span class="badge plan">geplant</span>':''}</span><span class="sub">${fmtD(m.datum)} · ${esc(massDetail(m))}</span></div><span class="r">${eur(c.perHa)}/ha</span></button>`}).join('')}</div>`:`<div class="note box">Für dieses Wirtschaftsjahr ist noch nichts dokumentiert. Tipp: Mikrofon unten rechts antippen und sagen, was du gemacht hast.</div>`}
    <button class="btn dash" data-act="massNew" data-sid="${s.id}">+ Maßnahme erfassen</button></div>
+  <button class="btn sec" data-act="pdfDialog" data-id="${s.id}">${svgI('M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6',18,2)} Schlag als PDF</button>
   <button class="btn sec" data-act="startDraw" data-id="${s.id}">${svgI(I.karte,18,2)} ${s.geo?'Grenze auf der Karte bearbeiten':'Grenze auf der Karte zeichnen'}</button>
   ${s.notizen?`<div class="card"><h2>Notizen</h2><div style="font-size:14px;white-space:pre-wrap">${esc(s.notizen)}</div></div>`:''}
   </div>`;
@@ -520,7 +521,7 @@ function vBetrieb(){
     const sk=L('sonstkosten').filter(k=>k.wj===wj).sort((a,b)=>(b.datum||'').localeCompare(a.datum||''));
     body=`<div class="card"><h2>Betrieb</h2><div class="fgrid">${F('set-name','Betriebsname',SET().name)}${F('set-kp','Pachtansatz Eigentum',SET().kalk_pacht,{type:'num',unit:'€/ha'})}</div><div class="note">Der Pachtansatz wird bei Eigentumsflächen als kalkulatorische Pacht abgezogen. 0 = kein Ansatz.</div><button class="btn sec sm" data-act="saveSettings" style="align-self:flex-start">Speichern</button></div>
     <div class="card"><div class="card-h"><h2>Sonstige Kosten ${esc(wj)}</h2><span class="num muted" style="font-size:13px">${eur(sk.reduce((a,k)=>a+n0(k.betrag),0))}</span></div><div class="note">Versicherung, Beiträge, Analysen … – optional einem Schlag zugeordnet.</div><div class="rows">${sk.map(k=>`<button class="row" data-act="skostForm" data-id="${k.id}"><div class="main"><span class="t">${esc(k.bezeichnung)}</span><span class="sub">${fmtD(k.datum)} · ${esc(k.schlag_id?D.schlaege[k.schlag_id]?.name:'ganzer Betrieb')}</span></div><span class="r">${eur(n0(k.betrag))}</span></button>`).join('')}</div><button class="btn dash" data-act="skostForm">+ Kosten erfassen</button></div>
-    <div class="card"><h2>Daten</h2><div class="as-actions"><button class="btn sec sm" data-act="go" data-v="import">${svgI(I.dl,16,2)} Importieren</button>${DL?`<button class="btn sec sm" data-act="exportCSV">Auswertung als CSV</button><button class="btn sec sm" data-act="exportMass">Maßnahmen als CSV</button><button class="btn sec sm" data-act="exportJSON">Sicherung (JSON)</button>`:'<span class="note">Export ist in dieser Ansicht nicht verfügbar.</span>'}</div></div>
+    <div class="card"><h2>Daten</h2><div class="as-actions"><button class="btn sec sm" data-act="go" data-v="import">${svgI(I.dl,16,2)} Importieren</button>${DL?`<button class="btn pri sm" data-act="pdfDialog">Auswertung als PDF</button><button class="btn sec sm" data-act="exportCSV">Auswertung als CSV</button><button class="btn sec sm" data-act="exportMass">Maßnahmen als CSV</button><button class="btn sec sm" data-act="exportJSON">Sicherung (JSON)</button>`:'<span class="note">Export ist in dieser Ansicht nicht verfügbar.</span>'}</div></div>
     ${teamCard()}${botCard()}
     ${!L('schlaege').length&&!L('maschinen').length?`<div class="card"><h2>Beispieldaten</h2><div class="note">Zum Ausprobieren: 6 Beispielschläge mit Maßnahmen, Maschinen, Mitteln und Milchdaten laden. Später mit einem Tipp wieder entfernen.</div><button class="btn sec sm" data-act="demoLoad" style="align-self:flex-start">Beispieldaten laden</button></div>`:''}
     <div class="card"><h2>Konto</h2><div style="font-size:14px">${LOCAL?'Demo-Modus (nicht verbunden)':'Angemeldet als <b>'+esc(ME&&ME.email)+'</b> · Rolle: '+esc({admin:'Betriebsleitung',editor:'Mitarbeiter',leser:'Nur lesen'}[ROLE]||ROLE)}</div>${S.betriebe.length>1?`<select id="betriebsel" class="inp">${S.betriebe.map(b=>`<option value="${b.id}"${BETRIEB&&b.id===BETRIEB.id?' selected':''}>${esc(b.name)}</option>`).join('')}</select>`:''}${LOCAL?'':'<button class="btn ghost sm" data-act="logout" style="align-self:flex-start">Abmelden</button>'}</div></div>`;
@@ -1160,6 +1161,74 @@ async function impAI(){
   catch(e){toast('KI-Vorschlag nicht möglich ('+(e&&e.code||'Fehler')+')')}
 }
 
+/* ---------- PDF-Auswertung ---------- */
+const PDFLIB=['https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js','https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js'];
+function pdfDialog(sid){
+  const wjs=wjList();
+  openSheet({title:sid?'Schlag als PDF':'Auswertung als PDF',body:`<div class="fgrid">${F('pdf-wj','Wirtschaftsjahr',curWJ(),{type:'select',opts:wjs})}</div>
+   ${sid?'':`<label style="display:flex;gap:10px;align-items:center;font-size:15px;min-height:44px"><input type="checkbox" id="pdf-einzeln" checked style="width:22px;height:22px"> Je Schlag eine eigene Seite mit Deckungsbeitrag und allen Maßnahmen</label>`}
+   <div class="note">Das PDF enthält ${sid?'die Stammdaten, Pacht, Deckungsbeitragsrechnung und alle Maßnahmen dieses Schlags':'Betriebsübersicht, Kostenstruktur, Deckungsbeitrag je Kultur und eine Tabelle aller Schläge'}. Es wird auf deinem Gerät erstellt und gespeichert.</div>`,
+   saveLabel:'PDF erstellen',save:async()=>{const b=$('#sh-save');b.innerHTML='<span class="spin"></span> wird erstellt …';try{await makePDF({wj:val('pdf-wj'),nur:sid||null,einzeln:sid?true:!!($('#pdf-einzeln')&&$('#pdf-einzeln').checked)})}catch(e){toast('PDF konnte nicht erstellt werden: '+(e&&e.message||e),8000);return false}}});
+}
+async function makePDF(o){
+  for(const u of PDFLIB)await loadScript(u);
+  const {jsPDF}=window.jspdf;const doc=new jsPDF({unit:'mm',format:'a4'});
+  const wj=o.wj;const t=farm(wj);const G=[47,93,58],GR=[91,102,93];const M=14;const W=210-2*M;
+  const e0=n=>nf(Math.round(n))+' €';const eha=(x,fl)=>fl?nf(Math.round(x/fl))+' €/ha':'-';
+  const heute=new Date();const dstr=fmtD(isoOf(heute)).replace(/(\d\d)$/,'20$1');
+  const kopf=(titel,unter)=>{doc.setFont('helvetica','bold');doc.setFontSize(17);doc.setTextColor(24,36,27);doc.text(titel,M,20);doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(...GR);doc.text(unter,M,26.5);doc.setDrawColor(...G);doc.setLineWidth(.6);doc.line(M,29.5,M+W,29.5);return 36};
+  const h2=(txt,y)=>{doc.setFont('helvetica','bold');doc.setFontSize(12);doc.setTextColor(24,36,27);doc.text(txt,M,y);return y+3};
+  const tab=(y,head,body,extra={})=>{doc.autoTable({startY:y,head:[head],body,margin:{left:M,right:M},theme:'striped',styles:{font:'helvetica',fontSize:9,cellPadding:1.8,textColor:[24,36,27]},headStyles:{fillColor:G,textColor:255,fontStyle:'bold'},alternateRowStyles:{fillColor:[243,244,239]},...extra});return doc.lastAutoTable.finalY+8};
+  const R=(cols)=>Object.fromEntries(cols.map(c=>[c,{halign:'right'}]));
+  const unter=betriebName()+' · Wirtschaftsjahr '+wj+' · Stand '+dstr;
+  const stufen=(r,fl)=>[['Erlöse',e0(r.erloes),eha(r.erloes,fl)],['- Saatgut',e0(r.saatgut),eha(r.saatgut,fl)],['- Dünger',e0(r.duenger),eha(r.duenger,fl)],['- Pflanzenschutz',e0(r.psm),eha(r.psm,fl)],['- Sonstiges',e0(r.sonst),eha(r.sonst,fl)],['= Deckungsbeitrag I',e0(r.db1),eha(r.db1,fl)],['- Maschinen & Lohn',e0(r.masch),eha(r.masch,fl)],['= Deckungsbeitrag II',e0(r.db2),eha(r.db2,fl)],['- Pacht / Pachtansatz',e0(r.pacht),eha(r.pacht,fl)],['= Ergebnis nach Pacht',e0(r.np),eha(r.np,fl)]];
+  const fett={didParseCell:d=>{if(d.section==='body'&&/^=/.test(d.row.raw[0])){d.cell.styles.fontStyle='bold';if(/nach Pacht/.test(d.row.raw[0]))d.cell.styles.fillColor=[227,236,223]}}};
+  let first=true;
+  if(!o.nur){
+    let y=kopf('Betriebswirtschaftliche Auswertung',unter);
+    y=h2('Betriebsergebnis Ackerbau',y+2);
+    doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(...GR);doc.text(`${t.n} Schläge · ${nf(t.fl,2)} ha${t.anyIst?' · Erlöse aus Ist-Erträgen, sonst Plan':' · Erlöse aus Plan-Erträgen'}`,M,y+3);
+    y=tab(y+6,['Position','gesamt','je ha'],stufen(t,t.fl),{columnStyles:R([1,2]),...fett});
+    const costs=[['Pacht',t.pacht],['Maschinen & Lohn',t.masch],['Dünger',t.duenger],['Pflanzenschutz',t.psm],['Saatgut',t.saatgut],['Sonstiges',t.sonst]];const tot=t.kosten||1;
+    y=h2('Kostenstruktur',y);y=tab(y+2,['Kostenart','gesamt','je ha','Anteil'],costs.map(([k,v])=>[k,e0(v),eha(v,t.fl),nf(v/tot*100,0)+' %']),{columnStyles:R([1,2,3])});
+    const byK={};t.rows.forEach(r=>{const k=r.kultur||'ohne Kultur';const c=byK[k]||(byK[k]={k,fl:0,erloes:0,kosten:0,np:0,n:0});c.fl+=r.fl;c.erloes+=r.erloes;c.kosten+=r.kosten;c.np+=r.np;c.n++});
+    if(y>230){doc.addPage();y=20}
+    y=h2('Deckungsbeitrag je Kultur',y);y=tab(y+2,['Kultur','Schläge','Fläche','Erlös/ha','Kosten/ha','nach Pacht/ha','nach Pacht gesamt'],Object.values(byK).sort((a,b)=>b.np/b.fl-a.np/a.fl).map(c=>[c.k,String(c.n),nf(c.fl,2)+' ha',eha(c.erloes,c.fl),eha(c.kosten,c.fl),eha(c.np,c.fl),e0(c.np)]),{columnStyles:R([1,2,3,4,5,6])});
+    doc.addPage('a4','landscape');
+    doc.setFont('helvetica','bold');doc.setFontSize(14);doc.setTextColor(24,36,27);doc.text('Alle Schläge · Wirtschaftsjahr '+wj,M,16);
+    const rows=t.rows.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+    doc.autoTable({startY:21,margin:{left:M,right:M},theme:'striped',styles:{font:'helvetica',fontSize:8,cellPadding:1.5},headStyles:{fillColor:G,textColor:255},alternateRowStyles:{fillColor:[243,244,239]},
+      head:[['Schlag','Kultur','Fläche','Besitz','Erlös','Direktkosten','DB I','Masch./Lohn','DB II','Pacht','nach Pacht','nach Pacht/ha']],
+      body:[...rows.map(r=>[r.name||'',r.kultur||'-',nf(r.fl,2),D.schlaege[r.id].besitz==='pacht'?'Pacht':'Eigentum',e0(r.erloes),e0(r.direkt),e0(r.db1),e0(r.masch),e0(r.db2),e0(r.pacht),e0(r.np),eha(r.np,r.fl)]),['Summe Betrieb','',nf(t.fl,2),'',e0(t.erloes),e0(t.direkt),e0(t.db1),e0(t.masch),e0(t.db2),e0(t.pacht),e0(t.np),eha(t.np,t.fl)]],
+      columnStyles:R([2,4,5,6,7,8,9,10,11]),didParseCell:d=>{if(d.section==='body'&&d.row.index===rows.length){d.cell.styles.fontStyle='bold';d.cell.styles.fillColor=[227,236,223]}}});
+    first=false;
+  }
+  if(o.einzeln){
+    const ids=o.nur?[o.nur]:t.rows.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(r=>r.id);
+    for(const sid of ids){
+      const s=D.schlaege[sid];const r=calc(sid,wj);const a=r.anbau||{};const p=r.vertrag;
+      if(!first)doc.addPage('a4','portrait');first=false;
+      let y=kopf('Schlag: '+(s.name||''),unter);
+      const info=[['Fläche',nf(r.fl,2)+' ha'],['Flurstück / Gemarkung',[s.flurstueck,s.gemarkung].filter(Boolean).join(' · ')||'-'],['Besitz',s.besitz==='pacht'?'Pacht':'Eigentum'],
+        ...(s.besitz==='pacht'?[['Verpächter',p&&p.verpaechter||'-'],['Pachtpreis',p?nf(n0(p.preis_eur_ha),0)+' €/ha · '+e0(r.pacht)+' im Jahr':'-'],['Laufzeit',p?[p.beginn&&'ab '+fmtD(p.beginn),p.ende&&'bis '+fmtD(p.ende)].filter(Boolean).join(' ')||'unbefristet':'-']]:[]),
+        ['Kultur / Sorte',[a.kultur,a.sorte].filter(Boolean).join(' · ')||'-'],['Vorfrucht',a.vorfrucht||'-'],['Ertrag',r.ertrag?nf(r.ertrag,1)+' dt/ha ('+(r.ist?'Ist':'Plan')+') × '+nf(r.preis,2)+' €/dt':'-']];
+      doc.autoTable({startY:y,body:info,margin:{left:M,right:M},theme:'plain',styles:{font:'helvetica',fontSize:9.5,cellPadding:1.2},columnStyles:{0:{fontStyle:'bold',cellWidth:48,textColor:GR}}});
+      y=doc.lastAutoTable.finalY+7;
+      y=h2('Deckungsbeitragsrechnung',y);y=tab(y+2,['Position','Schlag gesamt','je ha'],stufen(r,r.fl),{columnStyles:R([1,2]),...fett});
+      const ms=L('massnahmen').filter(m=>m.schlag_id===sid&&m.wj===wj).sort((x,z)=>(x.datum||'').localeCompare(z.datum||''));
+      if(y>235){doc.addPage();y=20}
+      y=h2('Maßnahmen ('+ms.length+')',y);
+      if(ms.length){const sum=ms.reduce((q,m)=>q+massCost(m).total,0);
+        tab(y+2,['Datum','Maßnahme','Mittel / Maschinen','Kosten','je ha'],[...ms.map(m=>{const c=massCost(m);return [fmtD(m.datum),(m.titel||TYP[m.typ]?.[0]||'')+(m.status==='geplant'?' (geplant)':''),massDetail(m).replace(/×/g,'x'),e0(c.total),eha(c.total,c.fl)]}),['','Summe','',e0(sum),eha(sum,r.fl)]],{columnStyles:{0:{cellWidth:20},2:{cellWidth:78},3:{halign:'right'},4:{halign:'right'}},didParseCell:d=>{if(d.section==='body'&&d.row.raw[1]==='Summe')d.cell.styles.fontStyle='bold'}})}
+      else{doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(...GR);doc.text('Keine Maßnahmen erfasst.',M,y+5)}
+    }
+  }
+  const n=doc.getNumberOfPages();
+  for(let i=1;i<=n;i++){doc.setPage(i);const pw=doc.internal.pageSize.getWidth(),ph=doc.internal.pageSize.getHeight();doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(...GR);doc.text('Ackerschlagkartei · '+betriebName(),M,ph-8);doc.text('Seite '+i+' von '+n,pw-M,ph-8,{align:'right'})}
+  const name=o.nur?('Schlag_'+(D.schlaege[o.nur].name||'').replace(/[^A-Za-z0-9ÄÖÜäöüß_-]+/g,'_')+'_'+wj.replace('/','-')):('Auswertung_'+wj.replace('/','-'));
+  await DL.save({filename:name+'.pdf',data:doc.output('blob')});toast('PDF erstellt');
+}
+
 /* ---------- Export ---------- */
 const csvCell=v=>{v=v==null?'':String(v);return /[;"\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
 const csv=rows=>'﻿'+rows.map(r=>r.map(csvCell).join(';')).join('\r\n');
@@ -1197,7 +1266,7 @@ const ACT={
   exportCSV,exportMass,exportJSON,
   demoDel:async(d,b)=>{if(!b.dataset.c){b.dataset.c=1;b.textContent='Wirklich alle löschen?';return}b.disabled=true;for(const c of COLS){for(const x of L(c)){if(x.demo)await del(c,x.id)}}toast('Beispieldaten entfernt')},
   impSrc:d=>{S.imp={src:d.k,kind:S.imp?.kind||'schlaege'};render()},impKind:d=>{S.imp={src:'mr',kind:d.k};render()},
-  impRun,impAI,inviteNew,inviteDel,inviteCopy:()=>{navigator.clipboard&&navigator.clipboard.writeText(S.neuLink).then(()=>toast('Link kopiert'),()=>toast('Bitte den Link markieren und kopieren.'))},inviteShare:()=>{navigator.share({title:'Einladung zur Hof-App',text:inviteText(S.neuLink)}).catch(()=>{})},botNew,botRevoke,copyBot:()=>{navigator.clipboard&&navigator.clipboard.writeText(S.botToken||'').then(()=>toast('Kopiert'),()=>toast('Bitte den Schlüssel markieren und kopieren.'))},memberDel,demoLoad,copyLink:()=>{const u=location.origin+location.pathname;navigator.clipboard&&navigator.clipboard.writeText(u).then(()=>toast('Link kopiert'),()=>toast(u))},
+  impRun,impAI,pdfDialog:d=>pdfDialog(d.id||null),inviteNew,inviteDel,inviteCopy:()=>{navigator.clipboard&&navigator.clipboard.writeText(S.neuLink).then(()=>toast('Link kopiert'),()=>toast('Bitte den Link markieren und kopieren.'))},inviteShare:()=>{navigator.share({title:'Einladung zur Hof-App',text:inviteText(S.neuLink)}).catch(()=>{})},botNew,botRevoke,copyBot:()=>{navigator.clipboard&&navigator.clipboard.writeText(S.botToken||'').then(()=>toast('Kopiert'),()=>toast('Bitte den Schlüssel markieren und kopieren.'))},memberDel,demoLoad,copyLink:()=>{const u=location.origin+location.pathname;navigator.clipboard&&navigator.clipboard.writeText(u).then(()=>toast('Link kopiert'),()=>toast(u))},
   impSaveVorl:async()=>{impReadMap();const imp=S.imp;const kind=imp.src==='mr'?imp.kind:'geo';await put('vorlagen',uid(),{src:imp.src,kind,map:imp.map,name:(imp.file||'Vorlage')+' · '+fmtD(todayISO())});toast('Vorlage gespeichert')}
 };
 document.addEventListener('click',e=>{const t=e.target.closest('[data-act]');if(!t)return;const f=ACT[t.dataset.act];if(f){if(t.tagName!=='INPUT')e.preventDefault();f(t.dataset,t,e)}});
