@@ -183,16 +183,24 @@ function calc(sid,wj){
   L('massnahmen').forEach(m=>{if(m.schlag_id!==sid||m.wj!==wj)return;const c=massCost(m);r.saatgut+=c.saatgut;r.duenger+=c.duenger;r.psm+=c.psm;r.sonst+=c.sonstiges;r.masch+=c.masch;if(m.status!=='geplant'&&(!r.last||m.datum>r.last.datum))r.last=m});
   L('sonstkosten').forEach(k=>{if(k.schlag_id===sid&&k.wj===wj)r.sonst+=n0(k.betrag)});
   const p=pachtFor(sid,wj);r.vertrag=p;
-  r.pachtHa=s.besitz==='pacht'?n0(p&&p.preis_eur_ha):n0(SET().kalk_pacht);r.pacht=r.pachtHa*fl;
+  const modus=pachtModus();const schlagPacht=s.besitz==='pacht'?n0(p&&p.preis_eur_ha):n0(SET().kalk_pacht);
+  r.pachtArt='schlag';r.pachtHa=schlagPacht;
+  if(modus==='durchschnitt'){r.pachtHa=pachtAvg(wj);r.pachtArt='durchschnitt'}
+  else if(modus==='kultur'){const kp=kulturPacht(r.kultur);if(kp!=null){r.pachtHa=kp;r.pachtArt='kultur'}}
+  r.pacht=r.pachtHa*fl;
   r.direkt=r.saatgut+r.duenger+r.psm+r.sonst;r.db1=r.erloes-r.direkt;r.db2=r.db1-r.masch;r.np=r.db2-r.pacht;r.kosten=r.direkt+r.masch+r.pacht;
   const h=x=>fl?x/fl:0;r.ha={erloes:h(r.erloes),saatgut:h(r.saatgut),duenger:h(r.duenger),psm:h(r.psm),sonst:h(r.sonst),masch:h(r.masch),pacht:h(r.pacht),db1:h(r.db1),db2:h(r.db2),np:h(r.np),kosten:h(r.kosten)};
   return r;
 }
-function farm(wj){
-  const rows=L('schlaege').map(s=>calc(s.id,wj));
+const PACHTMODI={schlag:['Je Schlag','Pacht aus dem Vertrag des Schlags, Eigentum mit Pachtansatz'],durchschnitt:['Ø Betrieb','Durchschnittliche Pacht des Betriebs für jeden Hektar'],kultur:['Je Kultur','Eigener Pachtpreis je Kultur (z. B. Rüben, Kartoffeln), sonst wie „Je Schlag“']};
+const pachtModus=()=>ls.get('pachtModus',SET().pacht_modus||'schlag');
+function pachtAvg(wj){let sum=0,fl=0;L('schlaege').forEach(s=>{if(s.besitz!=='pacht')return;const p=pachtFor(s.id,wj);if(!p)return;sum+=n0(p.preis_eur_ha)*n0(s.flaeche_ha);fl+=n0(s.flaeche_ha)});return fl?sum/fl:0}
+function kulturPacht(k){const m=SET().kultur_pacht||{};if(!k)return null;const key=Object.keys(m).find(x=>x.toLowerCase()===k.toLowerCase());return key!=null&&m[key]!==''&&m[key]!=null?n0(m[key]):null}
+function farm(wj,kultur){
+  const rows=L('schlaege').map(s=>calc(s.id,wj)).filter(r=>!kultur||(r.kultur||'Ohne Kultur')===kultur);
   const t={fl:0,erloes:0,saatgut:0,duenger:0,psm:0,sonst:0,masch:0,pacht:0,n:rows.length,rows,anyIst:false};
   rows.forEach(r=>{for(const k of ['fl','erloes','saatgut','duenger','psm','sonst','masch','pacht'])t[k]+=r[k];if(r.ist)t.anyIst=true});
-  L('sonstkosten').forEach(k=>{if(!k.schlag_id&&k.wj===wj)t.sonst+=n0(k.betrag)});
+  if(!kultur)L('sonstkosten').forEach(k=>{if(!k.schlag_id&&k.wj===wj)t.sonst+=n0(k.betrag)});
   t.direkt=t.saatgut+t.duenger+t.psm+t.sonst;t.db1=t.erloes-t.direkt;t.db2=t.db1-t.masch;t.np=t.db2-t.pacht;t.kosten=t.direkt+t.masch+t.pacht;
   return t;
 }
@@ -271,8 +279,13 @@ function banners(){let b='';if(LOCAL)b+=`<div class="banner">Demo-Modus: Die App
 function loading(){return `<div class="empty"><span class="spin"></span>Daten werden geladen …</div>`}
 
 /* Übersicht */
+function kulturenWJ(wj){return [...new Set(L('schlaege').map(s=>(anbauFor(s.id,wj)||{}).kultur||'Ohne Kultur'))].sort()}
+function auswahlLeiste(wj){const ks=kulturenWJ(wj);const kf=S.kfilter&&ks.includes(S.kfilter)?S.kfilter:'';const pm=pachtModus();
+  return `<div class="card" style="gap:10px;padding:12px 14px"><div class="chips">${['',...ks].map(k=>`<button class="chip ${kf===k?'on':''}" data-act="kfilter" data-k="${esc(k)}">${k?esc(k):'Alle Kulturen'}</button>`).join('')}</div>
+   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="muted" style="font-size:12px;font-weight:600">Pacht ansetzen:</span><div class="seg" style="grid-template-columns:repeat(3,auto);padding:3px">${Object.entries(PACHTMODI).map(([k,v])=>`<button class="${pm===k?'on':''}" style="height:32px;padding:0 10px" data-act="pachtModus" data-k="${k}" title="${esc(v[1])}">${v[0]}</button>`).join('')}</div></div>
+   <span class="note">${esc(PACHTMODI[pm][1])}${pm==='durchschnitt'?' · Ø '+eur(pachtAvg(wj))+'/ha':''}${pm==='kultur'&&!Object.keys(SET().kultur_pacht||{}).length?' · Pachtpreise je Kultur unter Betrieb → Pacht eintragen.':''}</span></div>`}
 function vUebersicht(){
-  const wj=curWJ();const t=farm(wj);
+  const wj=curWJ();const kf=S.kfilter&&kulturenWJ(wj).includes(S.kfilter)?S.kfilter:'';const t=farm(wj,kf);
   const head=`<div class="head"><div><div class="eyebrow">${esc(betriebName())} · WJ ${wjSelect()}</div><h1>Übersicht</h1></div><div style="display:flex;gap:8px"><button class="icon-btn" data-act="pdfDialog" aria-label="Auswertung als PDF" title="Auswertung als PDF">${svgI('M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6',20,2)}</button><button class="icon-btn" data-act="go" data-v="import" aria-label="Daten importieren">${svgI(I.dl,20,2)}</button></div></div>`;
   if(!READY)return `<div class="page">${head}${loading()}</div>`;
   if(!t.n)return `<div class="page">${head}${banners()}<div class="card empty"><b>Noch keine Schläge angelegt</b>Importiere deine Flächen aus FIONA oder der Ackerschlagkartei – oder lege den ersten Schlag von Hand an.<div class="as-actions" style="justify-content:center"><button class="btn pri" data-act="go" data-v="import">Daten importieren</button><button class="btn sec" data-act="schlagForm">Schlag anlegen</button></div></div>${stallCard()}</div>`;
@@ -283,8 +296,8 @@ function vUebersicht(){
   const weak=t.rows.filter(r=>r.fl).sort((a,b)=>a.ha.np-b.ha.np).slice(0,3);
   const avg=t.fl?t.np/t.fl:0;
   const recent=L('massnahmen').filter(m=>m.status!=='geplant').sort((a,b)=>(b.datum||'').localeCompare(a.datum||'')).slice(0,3);
-  return `<div class="page">${head}${banners()}${inboxCard()}
-  <div class="hero"><div class="l">Deckungsbeitrag nach Pacht</div><div class="v">${eur(t.np)}</div><div class="s">Ø ${eur(avg)}/ha · ${fha(t.fl)} · ${t.n} Schläge</div>
+  return `<div class="page">${head}${banners()}${inboxCard()}${auswahlLeiste(wj)}
+  <div class="hero"><div class="l">Deckungsbeitrag nach Pacht${kf?' · '+esc(kf):''}</div><div class="v">${eur(t.np)}</div><div class="s">Ø ${eur(avg)}/ha · ${fha(t.fl)} · ${t.n} Schläge · Pacht ${esc(PACHTMODI[pachtModus()][0])}</div>
    <div class="steps"><span>DB I <b>${eur(t.fl?t.db1/t.fl:0)}/ha</b></span><span>DB II <b>${eur(t.fl?t.db2/t.fl:0)}/ha</b></span></div></div>
   <div class="grid2">
    <div class="tile"><span class="l">Kosten gesamt</span><span class="v num">${eur(t.kosten)}</span><span class="s">${eur(t.fl?t.kosten/t.fl:0)}/ha</span></div>
@@ -433,7 +446,7 @@ function vSchlag(){
   <div class="card"><h2>Deckungsbeitrag je ha</h2><div class="dbcalc">
    <div class="ln" style="color:var(--fg)"><span>Erlös <span class="muted">${r.ertrag?nf(r.ertrag,1)+' dt × '+eur2(r.preis):'kein Ertrag/Preis hinterlegt'}${r.anbau&&!r.ist&&r.ertrag?' (Plan)':''}</span></span><span class="num">${eur(r.ha.erloes)}</span></div>
    ${ln('− Saatgut',eur(r.ha.saatgut))}${ln('− Dünger',eur(r.ha.duenger))}${ln('− Pflanzenschutz',eur(r.ha.psm))}${r.sonst?ln('− Sonstiges',eur(r.ha.sonst)):''}
-   ${ln('= DB I',eur(r.ha.db1),'sum')}${ln('− Maschinen & Lohn',eur(r.ha.masch))}${ln('= DB II',eur(r.ha.db2),'sum')}${ln(s.besitz==='pacht'?'− Pacht':'− Pachtansatz Eigentum',eur(r.ha.pacht))}
+   ${ln('= DB I',eur(r.ha.db1),'sum')}${ln('− Maschinen & Lohn',eur(r.ha.masch))}${ln('= DB II',eur(r.ha.db2),'sum')}${ln(r.pachtArt==='durchschnitt'?'− Pacht (Ø Betrieb)':r.pachtArt==='kultur'?'− Pacht ('+esc(r.kultur)+')':s.besitz==='pacht'?'− Pacht':'− Pachtansatz Eigentum',eur(r.ha.pacht))}
    <div class="ln final"><span>nach Pacht</span><span class="num ${r.ha.np<0?'neg':''}">${eur(r.ha.np)}/ha</span></div></div>
    <div class="note">Schlag gesamt: ${eur(r.np)} · Betriebsdurchschnitt ${eur(avg)}/ha</div></div>
   <div style="display:flex;flex-direction:column;gap:10px"><div class="card-h"><h2>Maßnahmen ${esc(wj)}</h2><span class="muted num" style="font-size:13px">${eur(ms.reduce((x,m)=>x+massCost(m).total,0))}</span></div>
@@ -515,7 +528,11 @@ function vBetrieb(){
     const soon=L('pacht').filter(p=>p.ende&&p.ende>=todayISO()&&p.ende<=String(new Date().getFullYear()+1)+'-12-31');
     body=`<div class="grid2"><div class="tile"><span class="l">Pacht gesamt / Jahr</span><span class="v num">${eur(sum)}</span><span class="s">${fha(fl)} gepachtet</span></div><div class="tile"><span class="l">Ø Pachtpreis</span><span class="v num">${eur(fl?sum/fl:0)}/ha</span><span class="s">${soon.length?soon.length+' Vertrag läuft bald aus':'keine Verträge laufen bald aus'}</span></div></div>
     <div class="card tight"><div style="display:flex;justify-content:space-between;padding:10px 0 6px;font-size:11px;color:var(--fg2);font-weight:700;text-transform:uppercase;letter-spacing:.05em"><span>Schlag</span><span>Pacht</span></div>${rows||'<div class="empty">Noch keine Schläge.</div>'}</div>
-    <button class="btn dash" data-act="pachtForm">+ Pachtvertrag anlegen</button>`;
+    <button class="btn dash" data-act="pachtForm">+ Pachtvertrag anlegen</button>
+    <div class="card"><div class="card-h"><h2>Pacht je Kultur</h2><small>für „Pacht ansetzen: Je Kultur“</small></div>
+     <div class="note">Für Kulturen, die du auf eigens gepachteten Flächen anbaust (z. B. Zuckerrüben, Kartoffeln), hier den Pachtpreis je Hektar eintragen. Leer = es gilt die Pacht des Schlags. Ø Betrieb aktuell: <b>${eur(pachtAvg(wj))}/ha</b>.</div>
+     <div class="fgrid">${[...new Set([...kulturenWJ(wj).filter(k=>k!=='Ohne Kultur'),'Zuckerrüben','Kartoffeln',...Object.keys(SET().kultur_pacht||{})])].sort().map(k=>{const v=(SET().kultur_pacht||{})[k];return `<label class="fld"><span>${esc(k)} <i>(€/ha)</i></span><input data-kp="${esc(k)}" inputmode="decimal" value="${v!=null?fmtIn(v):''}" placeholder="–"></label>`}).join('')}</div>
+     <button class="btn pri sm" data-act="kpSave" style="align-self:flex-start">Speichern</button></div>`;
   }
   if(S.seg==='schlaege'){
     const sch=L('schlaege').sort((a,b)=>(a.name||'').localeCompare(b.name||''));const fl=sch.reduce((a,s)=>a+n0(s.flaeche_ha),0);
@@ -611,8 +628,9 @@ function maschForm(id,pre){
 }
 function mittelForm(id){
   const m=id?D.mittel[id]:{kategorie:S.mseg,einheit:S.mseg==='psm'?'l':'kg'};const p=id?null:{};
-  openSheet({title:id?'Mittel bearbeiten':'Neues Betriebsmittel',body:`<div class="fgrid">${F('i-n','Name',m.name,{full:true})}${F('i-k','Kategorie',m.kategorie,{type:'select',opts:Object.entries(KAT)})}${F('i-e','Einheit',m.einheit,{type:'select',opts:['kg','l','t','m³','U','Sack','Stück']})}${F('i-h','Händler',m.haendler)}${F('i-z','Zulassung bis (PSM)',m.zulassung_bis,{type:'date'})}${F('i-nn','N',m.n,{type:'num',unit:'%'})}${F('i-pp','P₂O₅',m.p,{type:'num',unit:'%'})}${F('i-kk','K₂O',m.k,{type:'num',unit:'%'})}${F('i-ss','S',m.s,{type:'num',unit:'%'})}${p?F('i-pr','Einkaufspreis',null,{type:'num',unit:'€ je Einheit'})+F('i-ab','gültig ab',todayISO(),{type:'date'}):''}</div>`,
-   save:async()=>{if(!need(val('i-n'),'Bitte einen Namen eingeben.'))return false;const body={...m,name:val('i-n'),kategorie:val('i-k'),einheit:val('i-e'),haendler:val('i-h'),zulassung_bis:val('i-z'),n:nval('i-nn'),p:nval('i-pp'),k:nval('i-kk'),s:nval('i-ss')};if(p&&nval('i-pr')!=null)body.preise=[{ab:val('i-ab')||todayISO(),preis:nval('i-pr'),haendler:val('i-h')}];if(!body.preise)body.preise=[];await put('mittel',id||uid(),body);toast('Gespeichert')},
+  if(!PSM)loadPSM().then(()=>{const dl=$('#dl-mittel');if(dl)dl.outerHTML=mittelDatalist()});
+  openSheet({title:id?'Mittel bearbeiten':'Neues Betriebsmittel',body:`${mittelDatalist()}<div class="fgrid">${F('i-n','Name / Produkt',m.name,{full:true,list:'dl-mittel',ph:'z. B. Input Classic'})}${F('i-k','Kategorie',m.kategorie,{type:'select',opts:Object.entries(KAT)})}${F('i-e','Einheit',m.einheit,{type:'select',opts:['kg','l','t','m³','U','Sack','Stück']})}${F('i-h','Händler',m.haendler)}${F('i-z','Zulassung bis (PSM)',m.zulassung_bis,{type:'date'})}${F('i-nn','N',m.n,{type:'num',unit:'%'})}${F('i-pp','P₂O₅',m.p,{type:'num',unit:'%'})}${F('i-kk','K₂O',m.k,{type:'num',unit:'%'})}${F('i-ss','S',m.s,{type:'num',unit:'%'})}${p?F('i-pr','Einkaufspreis',null,{type:'num',unit:'€ je Einheit'})+F('i-ab','gültig ab',todayISO(),{type:'date'}):''}</div>`,
+   save:async()=>{if(!need(val('i-n'),'Bitte einen Namen eingeben.'))return false;const bv=psmFind(val('i-n'));const body={...m,name:val('i-n'),kennr:m.kennr||(bv&&bv.k)||null,kategorie:bv&&!id?'psm':val('i-k'),einheit:val('i-e'),haendler:val('i-h'),zulassung_bis:val('i-z')||(bv&&bv.z)||'',n:nval('i-nn'),p:nval('i-pp'),k:nval('i-kk'),s:nval('i-ss')};if(p&&nval('i-pr')!=null)body.preise=[{ab:val('i-ab')||todayISO(),preis:nval('i-pr'),haendler:val('i-h')}];if(!body.preise)body.preise=[];await put('mittel',id||uid(),body);toast('Gespeichert')},
    del:id?()=>del('mittel',id):null});
 }
 function mittelDetail(id){
@@ -631,24 +649,61 @@ async function addPrice(id,p,recalc){
   if(recalc){for(const x of L('massnahmen')){if(!(x.datum>=p.ab))continue;let ch=false;const mit=(x.mittel||[]).map(y=>{if(y.mittel_id===id&&!y.preis_manuell){const np=priceAt(D.mittel[id],x.datum);if(np&&np.preis!==y.preis){ch=true;return {...y,preis:np.preis}}}return y});if(ch)await put('massnahmen',x.id,{...x,mittel:mit})}}
 }
 
+/* ---------- Mittel-Verzeichnis (eigene Mittel + BVL-Pflanzenschutzliste + Dünger) ---------- */
+const WB={H:'Herbizid',F:'Fungizid',I:'Insektizid',A:'Akarizid',W:'Wachstumsregler',M:'Molluskizid',N:'Nematizid',R:'Rodentizid',B:'Bakterizid',L:'Lockstoff',P:'Pheromon',V:'Virizid',T:'Repellent',C:'Keimhemmer',E:'Wildschadenverhütung',X:'Sonstiges'};
+const DUENGER=[['KAS 27 % N','kg'],['Harnstoff 46 % N','kg'],['ASS 26 % N + 13 % S','kg'],['SSA 21 % N + 24 % S','kg'],['AHL 28 % N','l'],['Piamon 33 S','kg'],['YaraBela Sulfan','kg'],['Alzon 46','kg'],['ENTEC 26','kg'],['DAP 18/46','kg'],['MAP 12/52','kg'],['Triplesuperphosphat 46 %','kg'],['Kornkali 40 %','kg'],['60er Kali','kg'],['Patentkali','kg'],['Kieserit','kg'],['NPK 15-15-15','kg'],['NPK 20-8-8','kg'],['PK 12-24','kg'],['Kohlensaurer Kalk','t'],['Branntkalk','t'],['Rindergülle','m³'],['Schweinegülle','m³'],['Gärrest','m³'],['Stallmist','t']];
+let PSM=null,PSMP=null;
+function loadPSM(){return PSMP||(PSMP=fetch('psm.json').then(r=>r.json()).then(j=>{PSM=j.map(([n,k,z,w])=>({n,k,z,w,l:n.toLowerCase()}));return PSM}).catch(()=>{PSMP=null;return []}))}
+const psmFind=name=>{if(!PSM||!name)return null;const l=name.trim().toLowerCase();return PSM.find(p=>p.l===l)||null};
+const duengerFind=name=>{const l=(name||'').trim().toLowerCase();return DUENGER.find(d=>d[0].toLowerCase()===l)||null};
+const mittelByName=name=>{const l=(name||'').trim().toLowerCase();return l?L('mittel').find(m=>(m.name||'').toLowerCase()===l):null};
+function mittelDatalist(){const eig=L('mittel').map(m=>m.name).filter(Boolean);const set=new Set(eig.map(x=>x.toLowerCase()));
+  const opts=[...eig.sort((a,b)=>a.localeCompare(b)).map(n=>`<option value="${esc(n)}">deine Mittel</option>`),...DUENGER.filter(d=>!set.has(d[0].toLowerCase())).map(d=>`<option value="${esc(d[0])}">Dünger</option>`),...(PSM||[]).filter(p=>!set.has(p.l)&&(!p.z||p.z>=todayISO())).map(p=>`<option value="${esc(p.n)}">${esc((p.w||'').split('').map(c=>WB[c]||c).join(', ')||'Pflanzenschutz')}</option>`)];
+  return `<datalist id="dl-mittel">${opts.join('')}</datalist>`}
+function mittelInfo(x){const mi=D.mittel[x.mittel_id];
+  if(mi){const p=lastPrice(mi);return `aus deinen Mitteln${p?' · zuletzt '+nf(n0(p.preis),2)+' €/'+esc(mi.einheit||'')+' (ab '+fmtD(p.ab)+')':' · noch kein Preis'}${mi.zulassung_bis?' · Zulassung bis '+fmtD(mi.zulassung_bis):''}`}
+  if(!x.name)return 'Namen eintippen – bekannte Mittel und alle zugelassenen Pflanzenschutzmittel werden vorgeschlagen.';
+  const b=psmFind(x.name);if(b)return `<b>neu</b> – zugelassenes Pflanzenschutzmittel (${esc((b.w||'').split('').map(c=>WB[c]||c).join(', '))}), Kenn-Nr. ${esc(b.k)}, Zulassung bis ${fmtD(b.z)}${b.z&&b.z<todayISO()?' <span class="warn">– abgelaufen!</span>':''}. Wird beim Speichern unter Mittel abgelegt.`;
+  return '<b>neu</b> – wird beim Speichern unter Betrieb → Mittel abgelegt und künftig vorgeschlagen.'}
+function guessMittel(x,typ){const b=psmFind(x.name);if(b){x.kategorie='psm';x.einheit=x.einheit&&x.einheit!=='kg'?x.einheit:'l';x.kennr=b.k;x.zulassung_bis=b.z;return}const d=duengerFind(x.name);if(d){x.kategorie='duenger';x.einheit=d[1];return}x.kategorie=x.kategorie||({duengung:'duenger',pflanzenschutz:'psm',aussaat:'saatgut'}[typ]||'sonstiges');x.einheit=x.einheit||(x.kategorie==='psm'?'l':'kg')}
+/* Etikett-Foto → Texterkennung auf dem Gerät (Tesseract) */
+let OCRW=null;
+async function ocrBild(file,onStatus){
+  await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js');
+  if(!OCRW){onStatus&&onStatus('Texterkennung wird geladen (einmalig ca. 5 MB) …');OCRW=await Tesseract.createWorker('deu',1,{langPath:'https://tessdata.projectnaptha.com/4.0.0_fast'})}
+  onStatus&&onStatus('Etikett wird gelesen …');
+  const {data}=await OCRW.recognize(file);return data.text||'';
+}
+function ocrVorschlaege(text){
+  const t=nrm(text);const words=t.split(' ');const names=[];
+  const kand=[...L('mittel').map(m=>m.name),...DUENGER.map(d=>d[0]),...(PSM||[]).map(p=>p.n)];
+  const seen=new Set();
+  for(const n of kand){const ln=nrm(n);if(!ln||ln.length<3||seen.has(ln))continue;seen.add(ln);let sc=0;if(t.includes(ln))sc=1+ln.length/100;else if(ln.length>=5){sc=phraseScore(words,ln);if(sc<0.86)sc=0}if(sc)names.push([n,sc])}
+  names.sort((a,b)=>b[1]-a[1]);
+  const preise=[...String(text).matchAll(/(\d{1,4}[.,]\d{2})\s*(?:€|eur|euro)|(?:€|eur)\s*(\d{1,4}[.,]\d{2})/gi)].map(m=>num(m[1]||m[2])).filter(v=>v>0);
+  return {namen:names.slice(0,4).map(x=>x[0]),preise:[...new Set(preise)].slice(0,4)};
+}
+
 /* Maßnahme-Formular */
 let MF=null;
 function massForm(pre){
   const ed=pre&&pre.id?D.massnahmen[pre.id]:null;
   MF=ed?JSON.parse(JSON.stringify({...ed,schlag_ids:[ed.schlag_id]})):{schlag_ids:[],datum:todayISO(),typ:'bodenbearbeitung',status:'erledigt',titel:'',notizen:'',mittel:[],maschinen:[],lohn_eur:null,...(pre||{})};
   if(!MF.wj)MF.wj=wjOf(MF.datum,MF.typ);MF._wjAuto=!ed;
-  openSheet({title:ed?'Maßnahme bearbeiten':'Maßnahme erfassen',body:'<div id="mfb"></div>',saveLabel:'Speichern',save:saveMass,del:ed?()=>del('massnahmen',ed.id):null,mount:()=>{drawMF();const b=$('#shb');b.addEventListener('input',mfInput);b.addEventListener('change',mfInput)}});
+  openSheet({title:ed?'Maßnahme bearbeiten':'Maßnahme erfassen',body:'<div id="mfb"></div>',saveLabel:'Speichern',save:saveMass,del:ed?()=>del('massnahmen',ed.id):null,mount:()=>{drawMF();if(!PSM)loadPSM().then(()=>{if($('#mfb')){const dl=$('#dl-mittel');if(dl)dl.outerHTML=mittelDatalist()}});const fi=$('#shb');fi.addEventListener('change',e=>{if(e.target.id==='mf-ocr-file'){const f=e.target.files&&e.target.files[0];e.target.value='';if(f)mfOcrRun(f)}});const b=$('#shb');b.addEventListener('input',mfInput);b.addEventListener('change',mfInput)}});
 }
 function mittelOpts(sel){const g={};L('mittel').sort((a,b)=>(a.name||'').localeCompare(b.name||'')).forEach(m=>(g[m.kategorie]||(g[m.kategorie]=[])).push(m));return `<option value="">– neues Mittel –</option>`+Object.entries(KAT).filter(([k])=>g[k]).map(([k,l])=>`<optgroup label="${l}">${g[k].map(m=>`<option value="${m.id}"${m.id===sel?' selected':''}>${esc(m.name)}</option>`).join('')}</optgroup>`).join('')}
 function drawMF(){
   const ed=!!MF.id;const all=L('schlaege').sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   const wjs=[...new Set([MF.wj,...wjList()])].sort().reverse();
-  $('#mfb').innerHTML=`<div style="display:flex;flex-direction:column;gap:14px">
+  $('#mfb').innerHTML=`${mittelDatalist()}<input type="file" id="mf-ocr-file" accept="image/*" hidden><div style="display:flex;flex-direction:column;gap:14px">
    <div class="fld"><span>Schlag${ed?'':'(e) – mehrere möglich'}</span><div class="chips wrap">${all.map(s=>`<button type="button" class="chip ${MF.schlag_ids.includes(s.id)?'on':''}" data-act="mfSchlag" data-id="${s.id}">${esc(s.name)} · ${nf(n0(s.flaeche_ha),1)}</button>`).join('')||'<span class="note">Erst einen Schlag anlegen.</span>'}</div></div>
    <div class="fgrid">${F('mf-titel','Bezeichnung',MF.titel,{full:true,ph:'z. B. Düngung N1'})}${F('mf-datum','Datum',MF.datum,{type:'date'})}${F('mf-typ','Art',MF.typ,{type:'select',opts:Object.entries(TYP).map(([k,v])=>[k,v[0]])})}${F('mf-status','Status',MF.status,{type:'select',opts:[['erledigt','erledigt'],['geplant','geplant']]})}${F('mf-wj','Wirtschaftsjahr',MF.wj,{type:'select',opts:wjs})}</div>
    <div class="sub-h">Mittel</div><div class="lines">${MF.mittel.map((x,i)=>{const mi=D.mittel[x.mittel_id];return `<div class="line"><button type="button" class="x" data-act="mfDelM" data-i="${i}" aria-label="Entfernen">${svgI(I.x,16,2)}</button>
-     <label class="fld w3"><span>Mittel</span><select id="mm-id-${i}">${mittelOpts(x.mittel_id)}</select></label>
-     ${!x.mittel_id?F('mm-name-'+i,'Name neues Mittel',x.name,{cls:'w2'})+F('mm-kat-'+i,'Kategorie',x.kategorie||'duenger',{type:'select',opts:Object.entries(KATS)}):''}
+     <label class="fld w3"><span>Mittel / Produktname</span><div style="display:flex;gap:6px"><input id="mm-n-${i}" list="dl-mittel" value="${esc(x.name||'')}" placeholder="z. B. Input Classic, KAS 27 % N" autocomplete="off" style="flex:1"><button type="button" class="icon-btn" style="width:46px;height:46px" data-act="mfOcr" data-i="${i}" aria-label="Etikett fotografieren" title="Etikett fotografieren">${svgI(I.cam,20,2)}</button></div></label>
+     <div class="note w3" style="grid-column:1/-1">${mittelInfo(x)}</div>
+     ${x._ocr?`<div style="grid-column:1/-1;display:flex;flex-direction:column;gap:6px">${x._ocr.status?`<span class="note"><span class="spin" style="width:12px;height:12px"></span> ${esc(x._ocr.status)}</span>`:''}${x._ocr.namen&&x._ocr.namen.length?`<span class="note">Erkannt – antippen zum Übernehmen:</span><div class="chips wrap">${x._ocr.namen.map(n=>`<button type="button" class="chip" data-act="mfOcrName" data-i="${i}" data-n="${esc(n)}">${esc(n)}</button>`).join('')}</div>`:x._ocr.fertig?'<span class="note">Kein bekannter Produktname erkannt – bitte den Namen eintippen.</span>':''}${x._ocr.preise&&x._ocr.preise.length?`<div class="chips wrap">${x._ocr.preise.map(v=>`<button type="button" class="chip" data-act="mfOcrPreis" data-i="${i}" data-v="${v}">Preis ${nf(v,2)} €</button>`).join('')}</div>${x._ocr.preise&&x._ocr.preise.length?'<span class="note">Achtung: Der Preis muss je Einheit sein (z. B. Kanisterpreis ÷ Liter).</span>':''}`:''}</div>`:''}
+     ${!x.mittel_id&&x.name?F('mm-kat-'+i,'Kategorie',x.kategorie||'duenger',{type:'select',opts:Object.entries(KATS)}):''}
      ${F('mm-menge-'+i,'Menge/ha',x.menge_pro_ha,{type:'num'})}${!x.mittel_id?F('mm-einh-'+i,'Einheit',x.einheit||'kg',{type:'select',opts:['kg','l','t','m³','U','Sack','Stück']}):`<label class="fld"><span>Einheit</span><input value="${esc(mi?mi.einheit:x.einheit)}" disabled></label>`}${F('mm-preis-'+i,'Preis',x.preis,{type:'num',unit:'€/'+(mi?mi.einheit:x.einheit||'')})}
      <div class="cost" id="mm-c-${i}"></div></div>`}).join('')}<button type="button" class="btn sec sm" data-act="mfAddM" style="align-self:flex-start">+ Mittel</button></div>
    <div class="sub-h">Maschinen</div><div class="lines">${MF.maschinen.map((y,i)=>`<div class="line"><button type="button" class="x" data-act="mfDelG" data-i="${i}" aria-label="Entfernen">${svgI(I.x,16,2)}</button>
@@ -664,10 +719,11 @@ function mfRead(){
   if(MF._wjAuto&&(d!==MF.datum||t!==MF.typ)){MF.wj=wjOf(d,t);const s=$('#mf-wj');if(s){if(![...s.options].some(o=>o.value===MF.wj))s.add(new Option(MF.wj,MF.wj));s.value=MF.wj}}
   else MF.wj=val('mf-wj')||MF.wj;
   MF.datum=d;MF.typ=t;MF.status=val('mf-status');MF.notizen=val('mf-not');MF.lohn_eur=nval('mf-lohn');
-  MF.mittel.forEach((x,i)=>{const id=val('mm-id-'+i);if(id!==x.mittel_id){x.mittel_id=id;const mi=D.mittel[id];if(mi){x.name=mi.name;x.kategorie=mi.kategorie;x.einheit=mi.einheit;const p=priceAt(mi,MF.datum);x.preis=p?p.preis:null;x.preis_manuell=false;x._redraw=true}}else{if(!id){x.name=val('mm-name-'+i);x.kategorie=val('mm-kat-'+i);x.einheit=val('mm-einh-'+i)}const pr=nval('mm-preis-'+i);if(pr!==x.preis){x.preis=pr;x.preis_manuell=true}}x.menge_pro_ha=nval('mm-menge-'+i)});
+  MF.mittel.forEach((x,i)=>{if(!document.getElementById('mm-n-'+i))return;const name=val('mm-n-'+i);if(name!==(x.name||'')){mfSetName(x,name)}else{if(!x.mittel_id&&x.name){if(document.getElementById('mm-kat-'+i))x.kategorie=val('mm-kat-'+i);if(document.getElementById('mm-einh-'+i))x.einheit=val('mm-einh-'+i)}const pr=nval('mm-preis-'+i);if(pr!==x.preis){x.preis=pr;x.preis_manuell=true}}x.menge_pro_ha=nval('mm-menge-'+i)});
   MF.maschinen.forEach((y,i)=>{const id=val('mg-id-'+i);if(id!==y.maschine_id){y.maschine_id=id;const m=D.maschinen[id];if(m){y.name=m.name;y.abrechnung=m.einheit==='h'?'h':'ha';y.satz=n0(m.kostensatz);y._redraw=true}}else{const ab=val('mg-ab-'+i);if(ab!==y.abrechnung){y.abrechnung=ab;y._redraw=true}y.satz=nval('mg-satz-'+i)}y.menge=nval('mg-menge-'+i)});
 }
-function mfInput(e){if(!e.target.id)return;mfRead();if(MF.mittel.some(x=>x._redraw)||MF.maschinen.some(y=>y._redraw)||e.target.id.startsWith('mm-id')||e.target.id.startsWith('mg-id')){MF.mittel.forEach(x=>delete x._redraw);MF.maschinen.forEach(y=>delete y._redraw);if(e.type==='change'){const f=e.target.id;drawMF();const el=document.getElementById(f);el&&el.focus()}}else mfSum()}
+function mfSetName(x,name){x.name=name;const mi=mittelByName(name);x._redraw=true;if(mi){x.mittel_id=mi.id;x.kategorie=mi.kategorie;x.einheit=mi.einheit;const p=priceAt(mi,MF.datum);x.preis=p?p.preis:null;x.preis_manuell=false}else{x.mittel_id='';x.kennr=null;x.zulassung_bis=null;guessMittel(x,MF.typ)}}
+function mfInput(e){if(!e.target.id)return;if(e.type==='input'&&e.target.id.startsWith('mm-n-')){mfSum();return}mfRead();if(MF.mittel.some(x=>x._redraw)||MF.maschinen.some(y=>y._redraw)||e.target.id.startsWith('mm-n-')||e.target.id.startsWith('mg-id')){MF.mittel.forEach(x=>delete x._redraw);MF.maschinen.forEach(y=>delete y._redraw);if(e.type==='change'){const f=e.target.id;drawMF();const el=document.getElementById(f);el&&el.focus()}}else mfSum()}
 function mfSum(){
   const fl=MF.schlag_ids.reduce((a,id)=>a+n0(D.schlaege[id]?.flaeche_ha),0);
   let mit=0,ma=0;
@@ -676,11 +732,18 @@ function mfSum(){
   ma+=n0(MF.lohn_eur)*MF.schlag_ids.length;
   const el=$('#mf-sum');if(el)el.innerHTML=`<div class="big"><span>Kosten gesamt</span><span class="num">${eur(mit+ma)}</span></div><span>${MF.schlag_ids.length} Schlag/Schläge · ${fha(fl)} · ${fl?eur((mit+ma)/fl)+'/ha':''}</span><span class="muted">Mittel ${eur(mit)} · Maschinen & Lohn ${eur(ma)}</span>`;
 }
+async function mfOcrRun(file){const i=S.ocrRow;const x=MF.mittel[i];if(!x)return;mfRead();x._ocr={status:'Foto wird vorbereitet …'};drawMF();
+  try{await loadPSM();const text=await ocrBild(file,st=>{x._ocr.status=st;drawMF()});const v=ocrVorschlaege(text);x._ocr={...v,fertig:true};if(v.namen.length===1&&!x.name){mfSetName(x,v.namen[0]);delete x._redraw}if(v.preise.length===1&&x.preis==null){x.preis=v.preise[0];x.preis_manuell=true}}
+  catch(e){x._ocr={fertig:true,namen:[],preise:[]};toast('Texterkennung nicht möglich: '+(e&&e.message||e),6000)}
+  if($('#mfb'))drawMF()}
 async function saveMass(fromForm=true){
   if(fromForm)mfRead();
   if(!need(MF.schlag_ids.length,'Bitte mindestens einen Schlag auswählen.'))return false;
   // neue Mittel / Maschinen anlegen
-  for(const x of MF.mittel){if(!x.mittel_id&&x.name){const ex=L('mittel').find(m=>m.name.toLowerCase()===x.name.toLowerCase());if(ex)x.mittel_id=ex.id;else{const nid=uid();await put('mittel',nid,{name:x.name,kategorie:x.kategorie||'sonstiges',einheit:x.einheit||'kg',preise:x.preis!=null?[{ab:MF.datum,preis:x.preis}]:[]});x.mittel_id=nid}}}
+  let neuM=0,neuP=0;
+  for(const x of MF.mittel){if(!x.name)continue;
+    if(!x.mittel_id){const ex=mittelByName(x.name);if(ex)x.mittel_id=ex.id;else{const nid=uid();const b=psmFind(x.name);await put('mittel',nid,{name:x.name.trim(),kategorie:x.kategorie||'sonstiges',einheit:x.einheit||'kg',kennr:b?b.k:null,zulassung_bis:b?b.z:'',preise:x.preis!=null?[{ab:MF.datum,preis:x.preis}]:[]});x.mittel_id=nid;neuM++;continue}}
+    const mi=D.mittel[x.mittel_id];if(mi&&x.preis!=null&&x.preis_manuell){const p=priceAt(mi,MF.datum);if(!p||Math.abs(n0(p.preis)-n0(x.preis))>0.0001){await put('mittel',mi.id,{...mi,preise:[...(mi.preise||[]).filter(q=>q.ab!==MF.datum),{ab:MF.datum,preis:x.preis}]});neuP++}}}
   for(const y of MF.maschinen){if(!y.maschine_id&&y.name){const ex=L('maschinen').find(m=>m.name.toLowerCase()===y.name.toLowerCase());if(ex)y.maschine_id=ex.id;else{const nid=uid();await put('maschinen',nid,{name:y.name,besitz:'eigen',einheit:y.abrechnung||'ha',kostensatz:n0(y.satz)});y.maschine_id=nid}}}
   const mittel=MF.mittel.filter(x=>x.mittel_id||x.name).map(x=>{const mi=D.mittel[x.mittel_id];return {mittel_id:x.mittel_id,name:mi?mi.name:x.name,kategorie:mi?mi.kategorie:x.kategorie,einheit:mi?mi.einheit:x.einheit,menge_pro_ha:n0(x.menge_pro_ha),preis:n0(x.preis),preis_manuell:!!x.preis_manuell}});
   const ty=MF.typ;const titel=MF.titel||TYP[ty][0];
@@ -691,7 +754,7 @@ async function saveMass(fromForm=true){
     await put('massnahmen',id,{schlag_id:sid,wj:MF.wj,datum:MF.datum,typ:ty,status:MF.status,titel,notizen:MF.notizen,mittel,maschinen,lohn_eur:MF.lohn_eur,quelle:MF.quelle||'manuell',von:MF.von});
   }
   if(MF.id&&!MF.schlag_ids.includes(MF.schlag_id))await del('massnahmen',MF.id);
-  toast((MF.schlag_ids.length>1?`${MF.schlag_ids.length} Maßnahmen gespeichert`:'Maßnahme gespeichert')+(MF.wj!==curWJ()?` (WJ ${MF.wj})`:''));
+  toast((MF.schlag_ids.length>1?`${MF.schlag_ids.length} Maßnahmen gespeichert`:'Maßnahme gespeichert')+(MF.wj!==curWJ()?` (WJ ${MF.wj})`:'')+(neuM?` · ${neuM} neues Mittel abgelegt`:'')+(neuP?` · ${neuP} Preis aktualisiert`:''),4000);
 }
 
 /* Stall-Formulare */
@@ -1171,27 +1234,27 @@ async function impAI(){
 const PDFLIB=['https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js','https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js'];
 function pdfDialog(sid){
   const wjs=wjList();
-  openSheet({title:sid?'Schlag als PDF':'Auswertung als PDF',body:`<div class="fgrid">${F('pdf-wj','Wirtschaftsjahr',curWJ(),{type:'select',opts:wjs})}</div>
+  openSheet({title:sid?'Schlag als PDF':'Auswertung als PDF',body:`<div class="fgrid">${F('pdf-wj','Wirtschaftsjahr',curWJ(),{type:'select',opts:wjs})}${sid?'':F('pdf-k','Umfang',S.kfilter||'',{type:'select',opts:[['','Ganzer Betrieb'],...kulturenWJ(curWJ()).map(k=>[k,'Kultur: '+k])]})}${F('pdf-p','Pacht ansetzen',pachtModus(),{type:'select',opts:Object.entries(PACHTMODI).map(([k,v])=>[k,v[0]]),full:!!sid})}</div>
    ${sid?'':`<label style="display:flex;gap:10px;align-items:center;font-size:15px;min-height:44px"><input type="checkbox" id="pdf-einzeln" checked style="width:22px;height:22px"> Je Schlag eine eigene Seite mit Deckungsbeitrag und allen Maßnahmen</label>`}
    <div class="note">Das PDF enthält ${sid?'die Stammdaten, Pacht, Deckungsbeitragsrechnung und alle Maßnahmen dieses Schlags':'Betriebsübersicht, Kostenstruktur, Deckungsbeitrag je Kultur und eine Tabelle aller Schläge'}. Es wird auf deinem Gerät erstellt und gespeichert.</div>`,
-   saveLabel:'PDF erstellen',save:async()=>{const b=$('#sh-save');b.innerHTML='<span class="spin"></span> wird erstellt …';try{await makePDF({wj:val('pdf-wj'),nur:sid||null,einzeln:sid?true:!!($('#pdf-einzeln')&&$('#pdf-einzeln').checked)})}catch(e){toast('PDF konnte nicht erstellt werden: '+(e&&e.message||e),8000);return false}}});
+   saveLabel:'PDF erstellen',save:async()=>{const b=$('#sh-save');b.innerHTML='<span class="spin"></span> wird erstellt …';const pmAlt=pachtModus();ls.set('pachtModus',val('pdf-p'));try{await makePDF({wj:val('pdf-wj'),kultur:val('pdf-k')||'',nur:sid||null,einzeln:sid?true:!!($('#pdf-einzeln')&&$('#pdf-einzeln').checked)})}catch(e){toast('PDF konnte nicht erstellt werden: '+(e&&e.message||e),8000);return false}finally{ls.set('pachtModus',pmAlt);render()}}});
 }
 async function makePDF(o){
   for(const u of PDFLIB)await loadScript(u);
   const {jsPDF}=window.jspdf;const doc=new jsPDF({unit:'mm',format:'a4'});
-  const wj=o.wj;const t=farm(wj);const G=[47,93,58],GR=[91,102,93];const M=14;const W=210-2*M;
+  const wj=o.wj;const t=farm(wj,o.kultur||'');const G=[47,93,58],GR=[91,102,93];const M=14;const W=210-2*M;
   const e0=n=>nf(Math.round(n))+' €';const eha=(x,fl)=>fl?nf(Math.round(x/fl))+' €/ha':'-';
   const heute=new Date();const dstr=fmtD(isoOf(heute)).replace(/(\d\d)$/,'20$1');
   const kopf=(titel,unter)=>{doc.setFont('helvetica','bold');doc.setFontSize(17);doc.setTextColor(24,36,27);doc.text(titel,M,20);doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(...GR);doc.text(unter,M,26.5);doc.setDrawColor(...G);doc.setLineWidth(.6);doc.line(M,29.5,M+W,29.5);return 36};
   const h2=(txt,y)=>{doc.setFont('helvetica','bold');doc.setFontSize(12);doc.setTextColor(24,36,27);doc.text(txt,M,y);return y+3};
   const tab=(y,head,body,extra={})=>{doc.autoTable({startY:y,head:[head],body,margin:{left:M,right:M},theme:'striped',styles:{font:'helvetica',fontSize:9,cellPadding:1.8,textColor:[24,36,27]},headStyles:{fillColor:G,textColor:255,fontStyle:'bold'},alternateRowStyles:{fillColor:[243,244,239]},...extra});return doc.lastAutoTable.finalY+8};
   const R=(cols)=>Object.fromEntries(cols.map(c=>[c,{halign:'right'}]));
-  const unter=betriebName()+' · Wirtschaftsjahr '+wj+' · Stand '+dstr;
+  const unter=betriebName()+' · WJ '+wj+(o.kultur?' · Kultur '+o.kultur:'')+' · Pacht: '+PACHTMODI[pachtModus()][0]+' · Stand '+dstr;
   const stufen=(r,fl)=>[['Erlöse',e0(r.erloes),eha(r.erloes,fl)],['- Saatgut',e0(r.saatgut),eha(r.saatgut,fl)],['- Dünger',e0(r.duenger),eha(r.duenger,fl)],['- Pflanzenschutz',e0(r.psm),eha(r.psm,fl)],['- Sonstiges',e0(r.sonst),eha(r.sonst,fl)],['= Deckungsbeitrag I',e0(r.db1),eha(r.db1,fl)],['- Maschinen & Lohn',e0(r.masch),eha(r.masch,fl)],['= Deckungsbeitrag II',e0(r.db2),eha(r.db2,fl)],['- Pacht / Pachtansatz',e0(r.pacht),eha(r.pacht,fl)],['= Ergebnis nach Pacht',e0(r.np),eha(r.np,fl)]];
   const fett={didParseCell:d=>{if(d.section==='body'&&/^=/.test(d.row.raw[0])){d.cell.styles.fontStyle='bold';if(/nach Pacht/.test(d.row.raw[0]))d.cell.styles.fillColor=[227,236,223]}}};
   let first=true;
   if(!o.nur){
-    let y=kopf('Betriebswirtschaftliche Auswertung',unter);
+    let y=kopf(o.kultur?'Auswertung '+o.kultur:'Betriebswirtschaftliche Auswertung',unter);
     y=h2('Betriebsergebnis Ackerbau',y+2);
     doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(...GR);doc.text(`${t.n} Schläge · ${nf(t.fl,2)} ha${t.anyIst?' · Erlöse aus Ist-Erträgen, sonst Plan':' · Erlöse aus Plan-Erträgen'}`,M,y+3);
     y=tab(y+6,['Position','gesamt','je ha'],stufen(t,t.fl),{columnStyles:R([1,2]),...fett});
@@ -1201,11 +1264,11 @@ async function makePDF(o){
     if(y>230){doc.addPage();y=20}
     y=h2('Deckungsbeitrag je Kultur',y);y=tab(y+2,['Kultur','Schläge','Fläche','Erlös/ha','Kosten/ha','nach Pacht/ha','nach Pacht gesamt'],Object.values(byK).sort((a,b)=>b.np/b.fl-a.np/a.fl).map(c=>[c.k,String(c.n),nf(c.fl,2)+' ha',eha(c.erloes,c.fl),eha(c.kosten,c.fl),eha(c.np,c.fl),e0(c.np)]),{columnStyles:R([1,2,3,4,5,6])});
     doc.addPage('a4','landscape');
-    doc.setFont('helvetica','bold');doc.setFontSize(14);doc.setTextColor(24,36,27);doc.text('Alle Schläge · Wirtschaftsjahr '+wj,M,16);
+    doc.setFont('helvetica','bold');doc.setFontSize(14);doc.setTextColor(24,36,27);doc.text((o.kultur?o.kultur+' – ':'Alle ')+'Schläge · Wirtschaftsjahr '+wj,M,16);
     const rows=t.rows.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
     doc.autoTable({startY:21,margin:{left:M,right:M},theme:'striped',styles:{font:'helvetica',fontSize:8,cellPadding:1.5},headStyles:{fillColor:G,textColor:255},alternateRowStyles:{fillColor:[243,244,239]},
       head:[['Schlag','Kultur','Fläche','Besitz','Erlös','Direktkosten','DB I','Masch./Lohn','DB II','Pacht','nach Pacht','nach Pacht/ha']],
-      body:[...rows.map(r=>[r.name||'',r.kultur||'-',nf(r.fl,2),D.schlaege[r.id].besitz==='pacht'?'Pacht':'Eigentum',e0(r.erloes),e0(r.direkt),e0(r.db1),e0(r.masch),e0(r.db2),e0(r.pacht),e0(r.np),eha(r.np,r.fl)]),['Summe Betrieb','',nf(t.fl,2),'',e0(t.erloes),e0(t.direkt),e0(t.db1),e0(t.masch),e0(t.db2),e0(t.pacht),e0(t.np),eha(t.np,t.fl)]],
+      body:[...rows.map(r=>[r.name||'',r.kultur||'-',nf(r.fl,2),D.schlaege[r.id].besitz==='pacht'?'Pacht':'Eigentum',e0(r.erloes),e0(r.direkt),e0(r.db1),e0(r.masch),e0(r.db2),e0(r.pacht),e0(r.np),eha(r.np,r.fl)]),[o.kultur?'Summe '+o.kultur:'Summe Betrieb','',nf(t.fl,2),'',e0(t.erloes),e0(t.direkt),e0(t.db1),e0(t.masch),e0(t.db2),e0(t.pacht),e0(t.np),eha(t.np,t.fl)]],
       columnStyles:R([2,4,5,6,7,8,9,10,11]),didParseCell:d=>{if(d.section==='body'&&d.row.index===rows.length){d.cell.styles.fontStyle='bold';d.cell.styles.fillColor=[227,236,223]}}});
     first=false;
   }
@@ -1231,7 +1294,7 @@ async function makePDF(o){
   }
   const n=doc.getNumberOfPages();
   for(let i=1;i<=n;i++){doc.setPage(i);const pw=doc.internal.pageSize.getWidth(),ph=doc.internal.pageSize.getHeight();doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(...GR);doc.text('Ackerschlagkartei · '+betriebName(),M,ph-8);doc.text('Seite '+i+' von '+n,pw-M,ph-8,{align:'right'})}
-  const name=o.nur?('Schlag_'+(D.schlaege[o.nur].name||'').replace(/[^A-Za-z0-9ÄÖÜäöüß_-]+/g,'_')+'_'+wj.replace('/','-')):('Auswertung_'+wj.replace('/','-'));
+  const san=x=>String(x||'').replace(/[^A-Za-z0-9ÄÖÜäöüß_-]+/g,'_');const name=o.nur?('Schlag_'+san(D.schlaege[o.nur].name)+'_'+wj.replace('/','-')):('Auswertung_'+(o.kultur?san(o.kultur)+'_':'')+wj.replace('/','-'));
   await DL.save({filename:name+'.pdf',data:doc.output('blob')});toast('PDF erstellt');
 }
 
@@ -1264,6 +1327,9 @@ const ACT={
   massNew:d=>massForm(d.sid?{schlag_ids:[d.sid]}:{schlag_ids:S.view==='massnahmen'&&S.ms?[S.ms]:[]}),massEdit:d=>massForm({id:d.id}),
   mfSchlag:d=>{mfRead();const ed=!!MF.id;if(ed)MF.schlag_ids=[d.id];else MF.schlag_ids=MF.schlag_ids.includes(d.id)?MF.schlag_ids.filter(x=>x!==d.id):[...MF.schlag_ids,d.id];drawMF()},
   mfAddM:()=>{mfRead();MF.mittel.push({mittel_id:'',name:'',kategorie:{duengung:'duenger',pflanzenschutz:'psm',aussaat:'saatgut'}[MF.typ]||'sonstiges',einheit:'kg',menge_pro_ha:null,preis:null});drawMF()},
+  mfOcr:d=>{mfRead();S.ocrRow=+d.i;const f=$('#mf-ocr-file');if(f)f.click()},
+  mfOcrName:d=>{mfRead();const x=MF.mittel[+d.i];if(!x)return;mfSetName(x,d.n);delete x._redraw;drawMF()},
+  mfOcrPreis:d=>{mfRead();const x=MF.mittel[+d.i];if(!x)return;x.preis=+d.v;x.preis_manuell=true;drawMF()},
   mfDelM:d=>{mfRead();MF.mittel.splice(+d.i,1);drawMF()},
   mfAddG:()=>{mfRead();MF.maschinen.push({maschine_id:'',abrechnung:'ha',menge:null,satz:null});drawMF()},
   mfDelG:d=>{mfRead();MF.maschinen.splice(+d.i,1);drawMF()},
@@ -1272,7 +1338,7 @@ const ACT={
   exportCSV,exportMass,exportJSON,
   demoDel:async(d,b)=>{if(!b.dataset.c){b.dataset.c=1;b.textContent='Wirklich alle löschen?';return}b.disabled=true;for(const c of COLS){for(const x of L(c)){if(x.demo)await del(c,x.id)}}toast('Beispieldaten entfernt')},
   impSrc:d=>{S.imp={src:d.k,kind:S.imp?.kind||'schlaege'};render()},impKind:d=>{S.imp={src:'mr',kind:d.k};render()},
-  impRun,impAI,pdfDialog:d=>pdfDialog(d.id||null),inviteNew,inviteDel,inviteCopy:()=>{navigator.clipboard&&navigator.clipboard.writeText(S.neuLink).then(()=>toast('Link kopiert'),()=>toast('Bitte den Link markieren und kopieren.'))},inviteShare:()=>{navigator.share({title:'Einladung zur Hof-App',text:inviteText(S.neuLink)}).catch(()=>{})},botNew,botRevoke,copyBot:()=>{navigator.clipboard&&navigator.clipboard.writeText(S.botToken||'').then(()=>toast('Kopiert'),()=>toast('Bitte den Schlüssel markieren und kopieren.'))},memberDel,demoLoad,copyLink:()=>{const u=location.origin+location.pathname;navigator.clipboard&&navigator.clipboard.writeText(u).then(()=>toast('Link kopiert'),()=>toast(u))},
+  impRun,impAI,kfilter:d=>{S.kfilter=d.k;render()},pachtModus:d=>{ls.set('pachtModus',d.k);render()},kpSave:async()=>{const m={};document.querySelectorAll('[data-kp]').forEach(i=>{const v=num(i.value);if(Number.isFinite(v))m[i.dataset.kp]=v});await put('settings','main',{...SET(),kultur_pacht:m});toast('Pacht je Kultur gespeichert')},pdfDialog:d=>pdfDialog(d.id||null),inviteNew,inviteDel,inviteCopy:()=>{navigator.clipboard&&navigator.clipboard.writeText(S.neuLink).then(()=>toast('Link kopiert'),()=>toast('Bitte den Link markieren und kopieren.'))},inviteShare:()=>{navigator.share({title:'Einladung zur Hof-App',text:inviteText(S.neuLink)}).catch(()=>{})},botNew,botRevoke,copyBot:()=>{navigator.clipboard&&navigator.clipboard.writeText(S.botToken||'').then(()=>toast('Kopiert'),()=>toast('Bitte den Schlüssel markieren und kopieren.'))},memberDel,demoLoad,copyLink:()=>{const u=location.origin+location.pathname;navigator.clipboard&&navigator.clipboard.writeText(u).then(()=>toast('Link kopiert'),()=>toast(u))},
   impSaveVorl:async()=>{impReadMap();const imp=S.imp;const kind=imp.src==='mr'?imp.kind:'geo';await put('vorlagen',uid(),{src:imp.src,kind,map:imp.map,name:(imp.file||'Vorlage')+' · '+fmtD(todayISO())});toast('Vorlage gespeichert')}
 };
 document.addEventListener('click',e=>{const t=e.target.closest('[data-act]');if(!t)return;const f=ACT[t.dataset.act];if(f){if(t.tagName!=='INPUT')e.preventDefault();f(t.dataset,t,e)}});
